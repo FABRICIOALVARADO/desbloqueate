@@ -1,0 +1,27 @@
+<app-navbar />
+<main>
+  <section id="tablero" class="band board" aria-labelledby="tablero-title">
+    <div class="container">
+      <header class="board__intro">
+        <h1 id="tablero-title">Tus entregas, en orden.</h1>
+        <p class="lead">Anota lo que debes entregar. Desbloquéate pone arriba lo que vence primero.</p>
+      </header>
+      <div class="row g-4 g-xl-5">
+        <div class="col-lg-4 align-self-lg-start form-col"><app-task-form /></div>
+        <div class="col-lg-8"><app-task-list /></div>
+      </div>
+    </div>
+  </section>
+
+  <app-catalog />
+  <app-summary />
+  <app-diagnosis />
+  <app-architecture />
+</main>
+
+<footer class="colophon">
+  <div class="container">
+    <p>Desbloquéate · Proyecto universitario de Ingeniería de Sistemas</p>
+    <p>Autor: Fabricio Alvarado Mauricio</p>
+  </div>
+</footer>

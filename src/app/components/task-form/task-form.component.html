@@ -1,0 +1,80 @@
+<form class="form-card" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+  <h2 class="h4">Nueva entrega</h2>
+  <p class="hint">Dinos qué entregas y cuándo. Desbloquéate la ordena por ti.</p>
+
+  <div class="mb-3">
+    <label for="title" class="form-label fw-semibold">¿Qué debes entregar?</label>
+    <input #titleInput id="title" type="text" class="form-control" formControlName="title"
+           maxlength="80" autocomplete="off" placeholder="Ej. Informe de Base de Datos"
+           [class.is-invalid]="invalid('title')">
+    <div class="invalid-feedback">Escribe al menos 3 caracteres (máximo 80).</div>
+  </div>
+
+  <div class="mb-3">
+    <label for="dueDate" class="form-label fw-semibold">¿Para cuándo?</label>
+    <input id="dueDate" type="date" class="form-control" formControlName="dueDate"
+           [class.is-invalid]="invalid('dueDate')">
+    <div class="invalid-feedback">Elige la fecha de entrega.</div>
+    <div class="quick">
+      @for (q of quickDates; track q.days) {
+        <button type="button" (click)="setQuickDate(q.days)">{{ q.label }}</button>
+      }
+    </div>
+  </div>
+
+  <fieldset class="course-box mb-3">
+    <legend class="form-label fw-semibold">Curso <span class="optional">(opcional)</span></legend>
+    <select #career class="form-select" aria-label="Carrera" (change)="onCareer(career.value)">
+      <option value="" [selected]="sel().careerId === ''">Carrera…</option>
+      @for (c of catalog.careers(); track c.id) {
+        <option [value]="c.id" [selected]="c.id === sel().careerId">{{ c.name }}</option>
+      }
+    </select>
+    @if (cycles().length > 0) {
+      <div class="course-row">
+        <select #cycle class="form-select" aria-label="Ciclo" (change)="onCycle(cycle.value)">
+          <option value="0" [selected]="sel().cycle === 0">Ciclo…</option>
+          @for (cy of cycles(); track cy.number) {
+            <option [value]="cy.number" [selected]="cy.number === sel().cycle">Ciclo {{ cy.number }}</option>
+          }
+        </select>
+        <select #course class="form-select" aria-label="Curso" (change)="onCourse(course.value)" [disabled]="courses().length === 0">
+          <option value="" [selected]="sel().course === ''">Sin curso</option>
+          @for (co of courses(); track co.name) {
+            <option [value]="co.name" [selected]="co.name === sel().course">{{ co.name }}{{ co.elective ? ' (electivo)' : '' }}</option>
+          }
+        </select>
+      </div>
+    }
+  </fieldset>
+
+  <div class="mb-4">
+    <span class="form-label fw-semibold d-block">Archivos <span class="optional">(opcional)</span></span>
+    <input #picker type="file" multiple hidden (change)="pick(picker)">
+    <div class="dropzone" (dragover)="$event.preventDefault()" (drop)="drop($event)">
+      <button type="button" class="dropzone__btn" (click)="picker.click()">
+        <i class="bi bi-paperclip"></i> Adjuntar archivos
+      </button>
+      <span class="dropzone__hint">o suéltalos aquí · hasta {{ maxFiles }} de 10 MB</span>
+    </div>
+    @if (files.length > 0) {
+      <ul class="pending">
+        @for (f of files; track $index) {
+          <li>
+            <span class="pending__name">{{ f.name }}</span>
+            <span class="pending__size">{{ size(f.size) }}</span>
+            <button type="button" (click)="removePending($index)" [attr.aria-label]="'Quitar ' + f.name">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+
+  <button type="submit" class="btn btn-ink w-100 py-2">
+    <i class="bi bi-plus-lg me-1"></i> Agregar entrega
+  </button>
+
+  <p class="privacy"><i class="bi bi-shield-lock"></i> Todo se guarda solo en este navegador. Sin cuenta ni servidor.</p>
+</form>

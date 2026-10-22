@@ -1,0 +1,29 @@
+.form-card { background: var(--c-lift); border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 1.5rem; }
+.hint { color: var(--c-text-2); font-size: .95rem; margin-bottom: 1.25rem; }
+.form-label { font-size: .95rem; }
+.optional { font-weight: 400; color: var(--c-text-2); }
+.quick { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
+.quick button { border: 1px solid var(--c-rule); background: transparent; color: var(--c-text-2);
+  border-radius: 999px; padding: .2rem .75rem; font-size: .85rem; transition: background .15s, color .15s; }
+.quick button:hover { background: var(--c-ink); border-color: var(--c-ink); color: var(--c-paper); }
+
+.dropzone { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; padding: .75rem;
+  border: 1px dashed var(--c-rule); border-radius: var(--radius); }
+.dropzone__btn { border: 1px solid var(--c-ink); background: transparent; color: var(--c-ink);
+  border-radius: var(--radius); padding: .3rem .8rem; font-weight: 600; font-size: .9rem; }
+.dropzone__btn:hover { background: var(--c-ink); color: var(--c-paper); }
+.dropzone__hint { color: var(--c-text-2); font-size: .85rem; }
+
+.pending { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .3rem; }
+.pending li { display: flex; align-items: center; gap: .5rem; font-size: .9rem; border-bottom: 1px solid var(--c-rule); padding-bottom: .3rem; }
+.pending__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending__size { color: var(--c-text-2); font-size: .8rem; }
+.pending button { border: 0; background: transparent; color: var(--c-text-2); padding: .15rem .35rem; }
+.pending button:hover { color: var(--urgent); }
+.privacy { margin: 1rem 0 0; font-size: .85rem; color: var(--c-text-2); }
+
+.course-box { border: 0; padding: 0; margin: 0; }
+.course-box legend { float: none; font-size: .95rem; margin-bottom: .5rem; }
+.course-row { display: grid; grid-template-columns: 7.5rem 1fr; gap: .5rem; margin-top: .5rem; }
+.form-select { background-color: var(--c-lift); border: 1px solid var(--c-rule); border-radius: var(--radius); font-size: .95rem; }
+.form-select:focus { border-color: var(--c-ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-rule) 45%, transparent); }

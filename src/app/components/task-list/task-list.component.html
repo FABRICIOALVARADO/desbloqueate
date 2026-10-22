@@ -1,0 +1,113 @@
+@if (vm$ | async; as vm) {
+  <section aria-labelledby="board-title">
+    <div class="panel-head">
+      <div>
+        <h2 id="board-title" class="h4 mb-1">Pendientes</h2>
+        <p class="mb-0 summary">
+          @if (vm.counts.pending > 0) {
+            {{ vm.counts.pending }} por entregar, ordenadas por fecha.
+          } @else {
+            Sin pendientes por ahora.
+          }
+        </p>
+      </div>
+      @if (vm.courses.length > 0) {
+        <div class="course-filter">
+          <label for="courseFilter" class="visually-hidden">Filtrar por curso</label>
+          <select #cf id="courseFilter" class="form-select form-select-sm" (change)="setCourse(cf.value)">
+            <option value="" [selected]="vm.courseFilter === ''">Todos los cursos</option>
+            @for (c of vm.courses; track c) { <option [value]="c" [selected]="vm.courseFilter === c">{{ c }}</option> }
+          </select>
+        </div>
+      }
+      <div class="filters" role="group" aria-label="Filtrar por estado">
+        @for (f of filters; track f.value) {
+          <button type="button" [attr.aria-pressed]="vm.filter === f.value" (click)="setFilter(f.value)">
+            {{ f.label }}<span class="count">{{ vm.counts[f.value] }}</span>
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (vm.counts.all > 0) {
+      <div class="progress-wrap">
+        <div class="d-flex justify-content-between small progress-label">
+          <span>{{ vm.counts.completed }} de {{ vm.counts.all }} completadas</span>
+          <span>{{ vm.percent }}%</span>
+        </div>
+        <div class="progress" role="progressbar" aria-label="Avance" aria-valuemin="0" aria-valuemax="100"
+             [attr.aria-valuenow]="vm.percent">
+          <div class="progress-bar" [style.width.%]="vm.percent"></div>
+        </div>
+      </div>
+    }
+
+    @if (vm.items.length > 0) {
+      <ul class="tasks">
+        @for (v of vm.items; track v.task.id) {
+          <li class="task" [class]="'task--' + v.urgency"
+              [class.is-next]="v.task.id === vm.nextId"
+              [class.leaving]="leaving.has(v.task.id)"
+              [class.just-done]="justDone.has(v.task.id)">
+            <button type="button" class="check" (click)="toggle(v.task)"
+                    [attr.aria-label]="v.task.completed ? 'Marcar como pendiente' : 'Marcar como completada'"
+                    [title]="v.task.completed ? 'Marcar como pendiente' : 'Marcar como completada'">
+              <i class="bi" [class.bi-lock-fill]="!v.task.completed" [class.bi-unlock-fill]="v.task.completed"></i>
+            </button>
+
+            <div class="task__body">
+              @if (v.task.id === vm.nextId) {
+                <span class="next-label"><i class="bi bi-unlock"></i> Empieza por aquí</span>
+              }
+              <h3 class="task__title">{{ v.task.title }}</h3>
+              <div class="meta">
+                <span class="u-badge"><i class="bi" [class]="v.icon"></i> {{ v.badge }}</span>
+                <span><i class="bi bi-calendar-event"></i> {{ v.dateLabel }}</span>
+                @if (v.task.course) { <span><i class="bi bi-journal-bookmark"></i> {{ v.task.course }}</span> }
+              </div>
+
+              <div class="files">
+                @for (f of v.files; track f.id) {
+                  <span class="file">
+                    <button type="button" class="file__name" (click)="download(f)" [title]="'Descargar ' + f.name">
+                      <i class="bi bi-paperclip"></i><span class="file__text">{{ f.name }}</span>
+                      <small>{{ size(f.size) }}</small>
+                    </button>
+                    <button type="button" class="file__x" (click)="removeFile(f)" [attr.aria-label]="'Quitar ' + f.name">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </span>
+                }
+                <input #picker type="file" multiple hidden (change)="attach(v.task, picker)">
+                <button type="button" class="file-add" (click)="picker.click()">
+                  <i class="bi bi-plus-lg"></i> Adjuntar
+                </button>
+              </div>
+            </div>
+
+            <button type="button" class="trash" (click)="remove(v.task)" aria-label="Eliminar entrega" title="Eliminar">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </li>
+        }
+      </ul>
+    } @else {
+      <div class="empty">
+        <i class="bi bi-unlock"></i>
+        <h3 class="h5">{{ vm.emptyTitle }}</h3>
+        <p class="mb-0 mx-auto">{{ vm.emptyText }}</p>
+        @if (vm.isBlank) {
+          <button type="button" class="btn btn-ink btn-sm mt-3" (click)="addDemo()">Cargar ejemplos</button>
+        }
+      </div>
+    }
+
+    @if (vm.counts.completed > 0) {
+      <div class="mt-3 text-end">
+        <button type="button" class="btn btn-link btn-sm clear" (click)="clearCompleted()">
+          <i class="bi bi-eraser"></i> Limpiar completadas
+        </button>
+      </div>
+    }
+  </section>
+}

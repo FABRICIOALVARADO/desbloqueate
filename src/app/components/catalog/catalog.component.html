@@ -1,0 +1,84 @@
+<section id="cursos" class="band catalog" aria-labelledby="cursos-title">
+  <div class="container">
+    <h2 id="cursos-title">Catálogo de cursos</h2>
+    <p class="lead">Elige tu carrera y revisa los cursos de cada ciclo, con sus electivos. Pulsa «Usar» para asociar un curso a una entrega.</p>
+
+    <div class="controls">
+      <div>
+        <label for="cat-career" class="form-label">Carrera</label>
+        <select #careerSel id="cat-career" class="form-select" (change)="setCareer(careerSel.value)">
+          @for (c of careers(); track c.id) {
+            <option [value]="c.id" [selected]="c.id === career().id">{{ c.name }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="cat-cycle" class="form-label">Ciclo</label>
+        <select #cycleSel id="cat-cycle" class="form-select" (change)="setCycle(cycleSel.value)">
+          <option value="0" [selected]="cycleFilter() === 0">Todos</option>
+          @for (cy of career().cycles; track cy.number) {
+            <option [value]="cy.number" [selected]="cy.number === cycleFilter()">Ciclo {{ cy.number }}</option>
+          }
+        </select>
+      </div>
+      <label class="only">
+        <input #onlySel type="checkbox" [checked]="onlyElectives()" (change)="onlyElectives.set(onlySel.checked)">
+        Solo electivos
+      </label>
+    </div>
+
+    <p class="summary">
+      {{ career().faculty }} · {{ stats().courses }} cursos · {{ stats().electives }} electivos ·
+      {{ career().source === 'uc' ? 'Datos tomados de la página oficial de la UC (pueden cambiar).' : 'Plan que importaste tú.' }}
+    </p>
+
+    @if (visibleCycles().length > 0) {
+      <div class="cycles">
+        @for (cy of visibleCycles(); track cy.number) {
+          <article class="cycle">
+            <h3>Ciclo {{ cy.number }} <small>{{ credits(cy) }} créditos</small></h3>
+            <ul>
+              @for (co of cy.courses; track co.name) {
+                <li>
+                  <span class="name">{{ co.name }}</span>
+                  <span class="badges">
+                    @if (co.elective) { <span class="tag">Electivo</span> }
+                    @if (co.credits) { <span class="credits">{{ co.credits }} cr.</span> }
+                  </span>
+                  <button type="button" class="use" (click)="use(career(), cy.number, co.name)"
+                          [attr.aria-label]="'Usar ' + co.name + ' en una entrega'">Usar</button>
+                </li>
+              }
+            </ul>
+          </article>
+        }
+      </div>
+    } @else {
+      <p class="none">Este ciclo no tiene cursos electivos.</p>
+    }
+
+    <details class="import">
+      <summary>¿No está tu carrera? Importa su plan de estudios</summary>
+      <p>
+        Abre el plan de estudios de tu carrera en ucontinental.edu.pe, selecciona la lista de cursos, cópiala y pégala aquí.
+        Sirve el texto tal cual de la página o una línea por curso («Nombre | créditos») bajo cada «Ciclo N».
+      </p>
+      <label for="imp-name" class="form-label">Nombre de la carrera</label>
+      <input #impName id="imp-name" type="text" class="form-control" maxlength="80" autocomplete="off">
+      <label for="imp-text" class="form-label mt-3">Plan de estudios</label>
+      <textarea #impText id="imp-text" rows="8" class="form-control" [placeholder]="sample"></textarea>
+      <button type="button" class="btn btn-ink mt-3" (click)="importPlan(impName, impText)">Importar plan</button>
+
+      @if (customCareers().length > 0) {
+        <h3 class="h6 mt-4">Carreras que importaste</h3>
+        <ul class="custom">
+          @for (c of customCareers(); track c.id) {
+            <li>{{ c.name }}
+              <button type="button" (click)="removeCustom(c)" [attr.aria-label]="'Quitar ' + c.name"><i class="bi bi-trash3"></i></button>
+            </li>
+          }
+        </ul>
+      }
+    </details>
+  </div>
+</section>

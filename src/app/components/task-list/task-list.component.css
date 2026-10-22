@@ -1,0 +1,79 @@
+.panel-head { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.summary, .progress-label { color: var(--c-text-2); }
+.filters { display: inline-flex; border: 1px solid var(--c-rule); border-radius: var(--radius); padding: 3px; }
+.filters button { border: 0; background: transparent; border-radius: 4px; padding: .35rem .85rem;
+  font-weight: 600; font-size: .9rem; color: var(--c-text-2); }
+.filters button[aria-pressed='true'] { background: var(--c-deep); color: var(--c-paper); }
+.count { margin-left: .35rem; font-weight: 400; opacity: .75; font-variant-numeric: tabular-nums; }
+
+.progress-wrap { margin-bottom: 1.25rem; }
+.progress { height: 4px; background: var(--c-rule); border-radius: 99px; }
+.progress-bar { background: var(--c-deep); transition: width .4s ease; }
+
+.tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+
+/* Cada tarjeta define --fg y --bar según su urgencia; badge y franja las reutilizan. */
+.task { --fg: var(--c-text-2); --bar: var(--c-rule);
+  display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: start;
+  background: var(--c-lift); border: 1px solid var(--c-rule); border-left: 4px solid var(--bar);
+  border-radius: var(--radius); padding: 1rem 1.1rem; animation: task-in .28s ease-out; }
+.task--overdue, .task--today { --fg: var(--urgent); --bar: var(--urgent-bar); }
+.task--soon { --fg: var(--soon); --bar: var(--soon-bar); }
+.task--comfortable { --fg: var(--calm); --bar: var(--calm-bar); }
+.task--done { background: transparent; }
+
+.task__body { min-width: 0; }
+.task__title { margin: 0; font-size: 1.15rem; overflow-wrap: anywhere; }
+.task--done .task__title { text-decoration: line-through; color: var(--c-text-2); font-weight: 600; }
+.meta { display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; margin-top: .45rem; font-size: .9rem; color: var(--c-text-2); }
+.u-badge { font-weight: 600; font-size: .85rem; color: var(--fg); border-radius: 999px; padding: .15rem .65rem;
+  background: color-mix(in srgb, var(--fg) 12%, var(--c-lift)); }
+
+.check, .trash { width: 2.75rem; height: 2.75rem; border-radius: 50%; display: grid; place-items: center;
+  background: transparent; font-size: 1.1rem; color: var(--c-text-2); transition: background .15s, color .15s, border-color .15s; }
+.check { border: 1px solid var(--c-rule); }
+.check:hover { border-color: var(--c-deep); background: var(--c-deep); color: var(--c-paper); }
+.task--done .check { background: var(--c-ink); border-color: var(--c-ink); color: var(--c-paper); }
+.trash { border: 0; }
+.trash:hover { color: var(--urgent); background: color-mix(in srgb, var(--urgent) 10%, transparent); }
+
+/* Adjuntos */
+.files { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
+.file { display: inline-flex; align-items: center; max-width: 100%; border: 1px solid var(--c-rule); border-radius: 999px; overflow: hidden; }
+.file button { border: 0; background: transparent; color: inherit; font-size: .85rem; }
+.file__name { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; padding: .2rem .35rem .2rem .7rem; }
+.file__name:hover { text-decoration: underline; }
+.file__text { max-width: 13rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file__x { padding: .2rem .6rem .2rem .3rem; color: var(--c-text-2); }
+.file__x:hover { color: var(--urgent); }
+.file small { color: var(--c-text-2); }
+.file-add { border: 1px dashed var(--c-rule); background: transparent; color: var(--c-text-2); border-radius: 999px;
+  padding: .2rem .7rem; font-size: .85rem; }
+.file-add:hover { border-color: var(--c-ink); color: var(--c-ink); }
+
+/* La entrega más urgente: tarjeta oscura y grande. La decisión de "qué hago primero" ya está tomada. */
+.is-next { background: var(--c-ink); color: var(--c-paper); border-color: var(--c-ink); border-left-color: var(--bar); padding: 1.5rem; }
+.is-next .task__title { color: var(--c-paper); font-size: clamp(1.5rem, 3vw, 1.9rem); }
+.is-next .meta, .is-next .file small, .is-next .file__x { color: var(--c-rule); }
+.is-next .u-badge { background: var(--c-paper); }
+.is-next .check { border-color: var(--c-rule); color: var(--c-paper); }
+.is-next .check:hover { background: var(--c-paper); color: var(--c-deep); }
+.is-next .trash { color: var(--c-rule); }
+.is-next .trash:hover { color: var(--c-paper); background: transparent; }
+.is-next .file, .is-next .file-add { border-color: var(--c-rule); }
+.is-next .file-add { color: var(--c-rule); }
+.is-next .file-add:hover { color: var(--c-paper); border-color: var(--c-paper); }
+.next-label { display: block; margin-bottom: .35rem; font-size: .9rem; font-weight: 600; color: var(--c-rule); }
+
+.empty { text-align: center; padding: 3rem 1rem; border: 1px dashed var(--c-rule); border-radius: var(--radius); color: var(--c-text-2); }
+.empty .bi { font-size: 2rem; color: var(--c-ink); }
+.clear { color: var(--c-text-2); }
+
+@keyframes task-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes task-out { to { opacity: 0; transform: translateX(28px); } }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.3) rotate(-8deg); } 100% { transform: scale(1); } }
+.leaving { animation: task-out .26s ease-in forwards; }
+.just-done .check { animation: pop .6s ease; }
+
+.course-filter { flex: 1 1 11rem; max-width: 16rem; }
+.course-filter .form-select { background-color: var(--c-lift); border: 1px solid var(--c-rule); border-radius: var(--radius); }
