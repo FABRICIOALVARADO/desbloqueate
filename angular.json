@@ -15,34 +15,55 @@
             "outputPath": "dist/desbloqueate",
             "index": "src/index.html",
             "browser": "src/main.ts",
-            "polyfills": ["zone.js"],
+            "polyfills": [
+              "zone.js"
+            ],
             "tsConfig": "tsconfig.app.json",
-            "assets": ["src/favicon.svg"],
+            "assets": [
+              "src/favicon.svg",
+              "src/assets"
+            ],
             "styles": [
-              "node_modules/bootstrap/dist/css/bootstrap.min.css",
               "node_modules/bootstrap-icons/font/bootstrap-icons.min.css",
               "src/styles.css"
             ],
-            "allowedCommonJsDependencies": ["dayjs"]
+            "allowedCommonJsDependencies": [
+              "dayjs"
+            ]
           },
           "configurations": {
-            "production": { "outputHashing": "all" },
-            "development": { "optimization": false, "extractLicenses": false, "sourceMap": true }
+            "production": {
+              "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "inlineCritical": false,
+                  "minify": true
+                },
+                "fonts": false
+              }
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
           },
           "defaultConfiguration": "production"
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
-            "production": { "buildTarget": "desbloqueate:build:production" },
-            "development": { "buildTarget": "desbloqueate:build:development" }
+            "production": {
+              "buildTarget": "desbloqueate:build:production"
+            },
+            "development": {
+              "buildTarget": "desbloqueate:build:development"
+            }
           },
           "defaultConfiguration": "development"
         }
       }
     }
-  },
-  "cli": {
-    "analytics": "f8b50186-80e9-47fe-ba7b-d91714b3a38f"
   }
 }

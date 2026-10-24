@@ -1,29 +1,95 @@
-/**
- * COMPONENTE RAÍZ (composición)
- * Solo ensambla la página; no contiene lógica. Arquitectura de la app:
- *
- *   AppComponent
- *     |- NavbarComponent      (cabecera y navegación por secciones)
- *     |- TaskFormComponent    (entrada: valida y llama a TaskService / AttachmentService)
- *     |- TaskListComponent    (salida: lista priorizada, filtros, adjuntos)
- *     |- CatalogComponent     (carreras, ciclos y cursos de la UC; importador de planes)
- *     |- Summary / Diagnosis / Architecture (secciones informativas, contenido estático)
- *            ^ formulario y lista comparten los mismos servicios (estado + almacenamiento)
- */
-import { Component } from '@angular/core';
-import { CatalogComponent } from './components/catalog/catalog.component';
-import { NavbarComponent } from './components/navbar/navbar.component';
-import { ArchitectureComponent } from './components/sections/architecture.component';
-import { DiagnosisComponent } from './components/sections/diagnosis.component';
-import { SummaryComponent } from './components/sections/summary.component';
-import { TaskFormComponent } from './components/task-form/task-form.component';
-import { TaskListComponent } from './components/task-list/task-list.component';
-
-@Component({
-  selector: 'app-root',
-  standalone: true,
-  imports: [NavbarComponent, TaskFormComponent, TaskListComponent, CatalogComponent, SummaryComponent, DiagnosisComponent, ArchitectureComponent],
-  templateUrl: './app.component.html',
-  styleUrl: './app.component.css',
-})
-export class AppComponent {}
+import {Component,OnInit,OnDestroy,HostListener} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {FormsModule} from '@angular/forms';
+import {Course,Career,User,Task,Grade,Notice,Preferences} from './models/planner';
+@Component({selector:'app-root',standalone:true,imports:[CommonModule,FormsModule],templateUrl:'./app.component.html',styleUrl:'./app.component.css'})
+export class AppComponent implements OnInit,OnDestroy {
+ user:User|null=null;googleReady=false;loading=true;busy=false;view='home';authOpen=false;authMode='register';taskOpen=false;detail:Task|null=null;showNotices=false;mobileNav=false;toast='';toastError=false;authError='';taskError='';editId='';
+ authData={name:'',email:'',password:''};preferences:Preferences={theme:'light',accent:'violet',compact:false,reduceMotion:false,careerId:'ingenieria-de-sistemas-e-informatica',cycle:1};profileName='';
+ careers:Career[]=[];tasks:Task[]=[];community:Task[]=[];enrolled:string[]=[];notices:Notice[]=[];gradeRecords:{course_id:string;components:Grade[]}[]=[];googleEvents:{id:string;title:string;start:string;link:string}[]=[];
+ sources:any={};search='';communityQuery='';communityCourse='';communityCareer='';taskFilter='all';taskCourse='';onlyElectives=false;courseQuery='';careerId='ingenieria-de-sistemas-e-informatica';cycle=1;modality='all';
+ form={title:'',description:'',course_id:'',due_at:'',status:'pending',visibility:'private',effort:60,importance:2,reminder:1440};formCareer=this.careerId;formCycle=1;files:File[]=[];
+ gradeCourse='';gradeRows:Grade[]=[{name:'Consolidado 1',weight:20,grade:null},{name:'Evaluación parcial',weight:20,grade:null},{name:'Consolidado 2',weight:20,grade:null},{name:'Evaluación final',weight:40,grade:null}];gradeError='';
+ month=new Date(new Date().toLocaleDateString('en-CA',{timeZone:'America/Lima'})+'T12:00:00Z');selectedDate='';
+ private poll:any;private toastTimer:any;private shown=new Set<string>();
+ nav=[{id:'home',icon:'grid-1x2',label:'Mi inicio'},{id:'tasks',icon:'check2-square',label:'Mis tareas'},{id:'courses',icon:'journal-bookmark',label:'Malla y cursos'},{id:'calendar',icon:'calendar3',label:'Calendario'},{id:'community',icon:'people',label:'Comunidad'},{id:'grades',icon:'calculator',label:'Mis notas'},{id:'progress',icon:'bar-chart',label:'Mi progreso'}];
+ async api(path:string,method='GET',body?:any):Promise<any>{const response=await fetch('/api'+path,{method,credentials:'same-origin',headers:{'X-Requested-With':'Desbloqueate',...(!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},...(body!==undefined?{body:body instanceof FormData?body:JSON.stringify(body)}:{})});const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo completar la operación.');return data;}
+ async ngOnInit(){try{const [catalog,session]=await Promise.all([this.api('/catalog'),this.api('/session')]);this.careers=catalog.careers;this.sources=catalog;this.user=session.user;this.googleReady=session.googleReady;const saved=localStorage.getItem('desbloqueate.appearance');if(saved)try{Object.assign(this.preferences,JSON.parse(saved));}catch{}if(this.user)await this.loadAccount();this.applyAppearance();const params=new URLSearchParams(location.search);if(params.has('authError')){this.authOpen=true;this.authMode='login';this.authError=params.get('authError')==='existing-account'?'Ya tienes una cuenta con contraseña. Ingresa y vincula tu mismo Google desde Calendario.':'No se pudo vincular Google. Usa tu cuenta institucional y acepta los permisos solicitados.';}if(params.has('connected')){this.notify('Cuenta conectada correctamente.');if(params.get('connected')==='calendar')this.view='calendar';}if(location.search)history.replaceState({},'',location.pathname);this.poll=setInterval(()=>{if(this.user)this.loadNotices();},60000);}catch(e){this.notify(this.message(e),true);}finally{this.loading=false;}}
+ ngOnDestroy(){clearInterval(this.poll);clearTimeout(this.toastTimer);}
+ @HostListener('document:keydown.escape') escape(){this.authOpen=false;this.taskOpen=false;this.detail=null;this.showNotices=false;this.mobileNav=false;}
+ message(e:any){return e instanceof Error?e.message:'Ocurrió un error. Intenta de nuevo.';}
+ notify(text:string,error=false){this.toast=text;this.toastError=error;clearTimeout(this.toastTimer);this.toastTimer=setTimeout(()=>this.toast='',6500);}
+ go(view:string){this.view=view;this.mobileNav=false;this.search='';if(view==='community')this.findCommunity();if(view==='calendar'&&this.user?.calendarConnected)this.loadGoogleEvents();}
+ get title(){return this.nav.find(x=>x.id===this.view)?.label||(this.view==='settings'?'Tu espacio, a tu manera':'Desbloquéate');}
+ get firstName(){return this.user?.name.split(' ')[0]||'estudiante';}
+ get initials(){return this.user?this.user.name.split(' ').slice(0,2).map(x=>x[0]).join('').toUpperCase():'UC';}
+ get todayLabel(){return new Intl.DateTimeFormat('es-PE',{weekday:'long',day:'numeric',month:'long',timeZone:'America/Lima'}).format(new Date());}
+ get allCourses():Course[]{return this.careers.flatMap(c=>c.cycles.flatMap(cy=>cy.courses.map(x=>({...x,careerId:c.id,career:c.name,cycle:cy.number}))));}
+ get career(){return this.careers.find(x=>x.id===this.careerId);}
+ get availableCareers(){return this.careers.filter(c=>this.modality==='all'||c.modalities.includes(this.modality));}
+ get visibleCourses(){return (this.career?.cycles.find(c=>c.number===+this.cycle)?.courses||[]).filter(c=>(!this.onlyElectives||c.elective)&&c.name.toLowerCase().includes(this.courseQuery.toLowerCase()));}
+ get myCourses(){return this.allCourses.filter(c=>this.enrolled.includes(c.id));}
+ get formCycles(){return this.careers.find(c=>c.id===this.formCareer)?.cycles||[];}
+ get formCourses(){return this.formCycles.find(c=>c.number===+this.formCycle)?.courses||[];}
+ get chosenCourse(){return this.allCourses.find(c=>c.id===this.form.course_id);}
+ get done(){return this.tasks.filter(t=>t.status==='done').length;}
+ get progress(){return this.tasks.length?Math.round(this.done/this.tasks.length*100):0;}
+ get pending(){return this.tasks.filter(t=>t.status!=='done');}
+ get urgent(){return this.pending.filter(t=>(Date.parse(t.due_at)-Date.now())<72*3600000);}
+ score(t:Task){if(t.status==='done')return -1;const hours=(Date.parse(t.due_at)-Date.now())/36e5;return (hours<=0?10000:Math.max(0,168-hours)*10)+t.importance*30+Math.min(t.effort,480)/8+(t.status==='working'?20:0);}
+ get sorted(){return [...this.tasks].sort((a,b)=>this.score(b)-this.score(a));}
+ get suggested(){return this.sorted.find(t=>t.status!=='done');}
+ get filteredTasks(){return this.sorted.filter(t=>(this.taskFilter==='all'||t.status===this.taskFilter)&&(!this.taskCourse||t.course_id===this.taskCourse)&&(t.title+' '+t.course.name).toLowerCase().includes(this.search.toLowerCase()));}
+ reason(t:Task){const h=(Date.parse(t.due_at)-Date.now())/36e5;return h<0?'La fecha ya pasó. Revisa esta entrega primero.':h<24?'Vence en menos de 24 horas. Dale el primer bloque de estudio.':t.importance===3?'Tiene una importancia alta y una fecha próxima.':'Es la mejor combinación de fecha, importancia y tiempo estimado.';}
+ urgency(t:Task){if(t.status==='done')return 'Completada';const h=(Date.parse(t.due_at)-Date.now())/36e5;return h<0?'Vencida':h<24?'Hoy / mañana':h<72?'Próxima':'A tiempo';}
+ formatDate(s:string,full=false){return new Intl.DateTimeFormat('es-PE',{day:'numeric',month:'short',...(full?{hour:'2-digit' as const,minute:'2-digit' as const}:{}),timeZone:'America/Lima'}).format(new Date(s));}
+ statusLabel(s:string){return ({pending:'Pendiente',working:'En progreso',done:'Completada'} as any)[s];}
+ get unread(){return this.notices.filter(n=>!n.seen).length;}
+ get weekly(){const now=Date.now();return this.tasks.filter(t=>t.completed_at&&Date.parse(t.completed_at)>now-7*864e5).length;}
+ get progressByCourse(){return this.myCourses.map(c=>{const tasks=this.tasks.filter(t=>t.course_id===c.id);return {...c,total:tasks.length,done:tasks.filter(t=>t.status==='done').length};});}
+ get completedTasks(){return this.tasks.filter(t=>t.status==='done').sort((a,b)=>(b.completed_at||'').localeCompare(a.completed_at||''));}
+ async loadAccount(){if(!this.user)return;this.preferences={...this.preferences,...this.user.preferences};this.profileName=this.user.name;this.careerId=this.preferences.careerId;this.cycle=this.preferences.cycle;this.applyAppearance();const [tasks,enrolled,grades]=await Promise.all([this.api('/tasks'),this.api('/enrollments'),this.api('/grades')]);this.tasks=tasks;this.enrolled=enrolled;this.gradeRecords=grades;await this.loadNotices();}
+ requireAuth(){if(this.user)return true;this.authOpen=true;this.authMode='register';this.authError='';return false;}
+ async authenticate(){this.busy=true;this.authError='';try{this.user=await this.api('/auth/'+this.authMode,'POST',this.authData);this.authOpen=false;this.authData.password='';await this.loadAccount();this.notify(this.authMode==='register'?'Tu espacio está listo. Elige tus cursos para empezar.':'¡Qué bueno verte de nuevo!');}catch(e){this.authError=this.message(e);}finally{this.busy=false;}}
+ async logout(){try{await this.api('/auth/logout','POST',{});this.user=null;this.tasks=[];this.enrolled=[];this.notices=[];this.gradeRecords=[];this.googleEvents=[];this.detail=null;this.gradeRows=this.gradeRows.map(r=>({...r,grade:null}));this.view='home';this.notify('Sesión cerrada.');}catch(e){this.notify(this.message(e),true);}}
+ google(mode='login'){if(!this.googleReady){this.notify('El acceso con Google aún no está disponible. Puedes crear una cuenta con tu correo institucional.',true);return;}location.href='/api/auth/google?mode='+mode;}
+ changeCareer(){this.cycle=this.career?.cycles[0]?.number||1;}
+ changeModality(){if(!this.availableCareers.some(c=>c.id===this.careerId)){this.careerId=this.availableCareers[0]?.id||'';this.changeCareer();}}
+ async toggleCourse(c:Course){if(!this.requireAuth())return;const ids=this.enrolled.includes(c.id)?this.enrolled.filter(id=>id!==c.id):[...this.enrolled,c.id];try{this.enrolled=await this.api('/enrollments','PUT',{courseIds:ids});this.notify(ids.includes(c.id)?'Curso añadido a tu espacio.':'Curso retirado de tu selección.');}catch(e){this.notify(this.message(e),true);}}
+ newTask(course?:Course){if(!this.requireAuth())return;this.editId='';this.files=[];this.taskError='';this.formCareer=course?.careerId||this.careerId;this.formCycle=course?.cycle||this.cycle;const d=new Date(Date.now()+864e5);this.form={title:'',description:'',course_id:course?.id||this.formCourses[0]?.id||'',due_at:this.limaInput(d),status:'pending',visibility:'private',effort:60,importance:2,reminder:1440};this.taskOpen=true;}
+ editTask(t:Task){this.editId=t.id;this.formCareer=t.course.careerId||this.careerId;this.formCycle=t.course.cycle||1;this.form={title:t.title,description:t.description,course_id:t.course_id,due_at:this.limaInput(new Date(t.due_at)),status:t.status,visibility:t.visibility,effort:t.effort,importance:t.importance,reminder:t.reminder};this.files=[];this.taskError='';this.detail=null;this.taskOpen=true;}
+ limaInput(d:Date){const parts=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);return parts.replace(' ','T');}
+ formCourseChange(career=false){if(career)this.formCycle=this.formCycles[0]?.number||1;this.form.course_id=this.formCourses[0]?.id||'';}
+ pickFiles(e:Event){this.files=Array.from((e.target as HTMLInputElement).files||[]);if(this.files.length>8||this.files.some(f=>f.size>10*1024*1024)){this.taskError='Máximo 8 archivos, de hasta 10 MB cada uno.';this.files=[];}}
+ async saveTask(){this.busy=true;this.taskError='';try{const due=new Date(this.form.due_at+':00-05:00');if(!Number.isFinite(due.getTime()))throw Error('Revisa la fecha y la hora.');const data={...this.form,due_at:due.toISOString(),effort:+this.form.effort,importance:+this.form.importance,reminder:+this.form.reminder};const saved=await this.api(this.editId?'/tasks/'+this.editId:'/tasks',this.editId?'PATCH':'POST',data);this.editId=saved.id;const failures:string[]=[];for(const file of this.files){const body=new FormData();body.append('file',file);try{await this.api('/tasks/'+saved.id+'/files','POST',body);}catch(e){failures.push(file.name+': '+this.message(e));}}this.tasks=await this.api('/tasks');this.files=[];if(failures.length){this.taskError='La tarea se guardó, pero algunos archivos no: '+failures.join('; ');return;}this.taskOpen=false;this.notify('Tarea guardada'+(this.user?.calendarConnected?'. Sincroniza Calendar para actualizar su evento.':'.'));}catch(e){this.taskError=this.message(e);}finally{this.busy=false;}}
+ async setStatus(t:Task,status:string){try{const saved=await this.api('/tasks/'+t.id,'PATCH',{status});this.tasks=this.tasks.map(x=>x.id===t.id?saved:x);if(this.detail?.id===t.id)this.detail=saved;this.notify(status==='done'?'Una entrega menos. ¡Bien hecho!':'Estado actualizado.');}catch(e){this.notify(this.message(e),true);}}
+ async removeTask(t:Task){if(!confirm('¿Eliminar esta tarea y sus archivos?'))return;try{await this.api('/tasks/'+t.id,'DELETE');this.tasks=this.tasks.filter(x=>x.id!==t.id);this.detail=null;this.notify('Tarea eliminada.');}catch(e){this.notify(this.message(e),true);}}
+ openTask(t:Task){this.detail=t;}
+ isOwn(t:Task){return this.tasks.some(x=>x.id===t.id);}
+ downloadFile(id:string){if(this.requireAuth())window.open('/api/files/'+id,'_blank','noopener');}
+ async removeFile(id:string){try{await this.api('/files/'+id,'DELETE');this.tasks=await this.api('/tasks');if(this.detail)this.detail=this.tasks.find(x=>x.id===this.detail!.id)||null;}catch(e){this.notify(this.message(e),true);}}
+ async findCommunity(){try{this.community=await this.api('/community?'+new URLSearchParams({q:this.communityQuery,course:this.communityCourse,career:this.communityCareer}));}catch(e){this.notify(this.message(e),true);}}
+ async copyTask(t:Task){if(!this.requireAuth())return;this.newTask(t.course);this.form.title=t.title;this.form.description='Referencia compartida por '+(t.author||'un estudiante')+'\n\n'+t.description;this.notify('Ajusta tu fecha. La copia se guardará privada y sin archivos.');}
+ async loadNotices(){try{this.notices=await this.api('/notifications');for(const n of this.notices){if(!n.seen&&!this.shown.has(n.id)){this.shown.add(n.id);if(typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Desbloquéate · Tu recordatorio',{body:n.title,tag:n.id});}}}catch{}}
+ async readNotices(){if(!this.requireAuth())return;this.showNotices=!this.showNotices;if(this.showNotices){await this.loadNotices();try{await this.api('/notifications/read','POST',{});this.notices=this.notices.map(n=>({...n,seen:1}));}catch{}}}
+ async enableNotifications(){if(typeof Notification==='undefined'){this.notify('Tu navegador no admite notificaciones.',true);return;}const p=await Notification.requestPermission();this.notify(p==='granted'?'Avisos activados mientras tengas la app abierta.':'Puedes seguir viendo los avisos en la campana.');}
+ get monthLabel(){return new Intl.DateTimeFormat('es-PE',{month:'long',year:'numeric',timeZone:'UTC'}).format(this.month);}
+ get days(){const year=this.month.getUTCFullYear(),month=this.month.getUTCMonth(),first=new Date(Date.UTC(year,month,1)),offset=(first.getUTCDay()+6)%7;return Array.from({length:42},(_,i)=>{const d=new Date(Date.UTC(year,month,i-offset+1)),iso=d.toISOString().slice(0,10);return {day:d.getUTCDate(),date:iso,current:d.getUTCMonth()===month,today:iso===this.limaInput(new Date()).slice(0,10),tasks:this.tasks.filter(t=>this.limaInput(new Date(t.due_at)).slice(0,10)===iso)};});}
+ moveMonth(n:number){this.month=new Date(Date.UTC(this.month.getUTCFullYear(),this.month.getUTCMonth()+n,1));}
+ get dayTasks(){return this.tasks.filter(t=>!this.selectedDate||this.limaInput(new Date(t.due_at)).slice(0,10)===this.selectedDate).sort((a,b)=>a.due_at.localeCompare(b.due_at));}
+ exportCalendar(){if(this.requireAuth())window.open('/api/calendar/export','_blank','noopener');}
+ async syncCalendar(){if(!this.requireAuth())return;this.busy=true;try{const r=await this.api('/calendar/sync','POST',{});await this.loadGoogleEvents();this.notify(`${r.count} entregas sincronizadas en Google Calendar.`);}catch(e){this.notify(this.message(e),true);}finally{this.busy=false;}}
+ async loadGoogleEvents(){try{this.googleEvents=await this.api('/calendar/events');}catch(e){this.notify(this.message(e),true);}}
+ async disconnect(){try{await this.api('/calendar/disconnect','POST',{});if(this.user)this.user.calendarConnected=false;this.googleEvents=[];this.notify('Calendar desconectado. Los eventos existentes permanecen en Google.');}catch(e){this.notify(this.message(e),true);}}
+ selectGrade(){const old=this.gradeRecords.find(g=>g.course_id===this.gradeCourse);this.gradeRows=old?structuredClone(old.components):[{name:'Consolidado 1',weight:20,grade:null},{name:'Evaluación parcial',weight:20,grade:null},{name:'Consolidado 2',weight:20,grade:null},{name:'Evaluación final',weight:40,grade:null}];}
+ get gradeTotal(){return this.gradeRows.reduce((s,r)=>s+(+r.weight||0),0);}
+ get gradeValid(){return Math.abs(this.gradeTotal-100)<.001&&this.gradeRows.length>0&&this.gradeRows.every(r=>r.name.trim()&&+r.weight>0&&+r.weight<=100&&(r.grade===null||r.grade==='' as any||(Number.isFinite(+r.grade)&&+r.grade>=0&&+r.grade<=20)));}
+ get earned(){return this.gradeRows.reduce((s,r)=>s+(r.grade===null?0:(+r.grade||0)*(+r.weight||0)/100),0);}
+ get remainingWeight(){return this.gradeRows.filter(r=>r.grade===null||r.grade==='' as any).reduce((s,r)=>s+(+r.weight||0),0);}
+ get needed(){return this.remainingWeight?Math.max(0,(10.5-this.earned)/(this.remainingWeight/100)):null;}
+ addGrade(){if(this.gradeRows.length<20)this.gradeRows.push({name:'Nueva evaluación',weight:0,grade:null});}
+ async saveGrades(){if(!this.requireAuth())return;this.gradeError='';if(!this.gradeCourse){this.gradeError='Selecciona un curso.';return;}try{const components=this.gradeRows.map(r=>({name:r.name,weight:+r.weight,grade:r.grade===null||r.grade==='' as any?null:+r.grade!}));await this.api('/grades/'+encodeURIComponent(this.gradeCourse),'PUT',{components});this.gradeRecords=await this.api('/grades');this.notify('Notas guardadas para este curso.');}catch(e){this.gradeError=this.message(e);}}
+ applyAppearance(){document.documentElement.dataset['theme']=this.preferences.theme;document.documentElement.dataset['accent']=this.preferences.accent;document.documentElement.classList.toggle('reduce-motion',this.preferences.reduceMotion);document.documentElement.classList.toggle('compact',this.preferences.compact);localStorage.setItem('desbloqueate.appearance',JSON.stringify({theme:this.preferences.theme,accent:this.preferences.accent,compact:this.preferences.compact,reduceMotion:this.preferences.reduceMotion}));}
+ async saveProfile(){this.applyAppearance();if(!this.requireAuth())return;try{this.user=await this.api('/profile','PATCH',{name:this.profileName,preferences:this.preferences});this.careerId=this.preferences.careerId;this.cycle=this.preferences.cycle;this.notify('Preferencias guardadas.');}catch(e){this.notify(this.message(e),true);}}
+ exportSummary(){if(!this.requireAuth())return;const text=['Desbloquéate · Resumen personal',this.user!.name,this.todayLabel,`Completadas: ${this.done}/${this.tasks.length} (${this.progress}%)`,'',...this.tasks.map(t=>`${this.statusLabel(t.status)} | ${t.course.name} | ${t.title} | ${this.formatDate(t.due_at,true)}`)].join('\n');const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='mi-resumen.txt';a.click();URL.revokeObjectURL(url);}
+}
