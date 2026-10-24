@@ -1,6 +1,6 @@
 # Desbloquéate · Universidad Continental, Huancayo
 
-Aplicación de organización académica con Angular, servidor Node.js y base de datos SQLite persistente. Proyecto estudiantil independiente, sin afiliación oficial a la Universidad Continental.
+Aplicación de organización académica con Angular, servidor Node.js y base de datos PostgreSQL en la nube o SQLite local. Proyecto estudiantil independiente, sin afiliación oficial a la Universidad Continental.
 
 ## Iniciar
 
@@ -57,6 +57,6 @@ Actualizar catálogo: npm run data:refresh. Antes de actualizar una instalación
 
 npm test comprueba cálculo y redondeo, prioridad, ICS, registro, aislamiento entre cuentas, privacidad de archivos, recordatorios, cierre de sesión y persistencia tras reiniciar el servidor.
 
-Necesita un servidor Node permanente y disco persistente. No es un sitio estático desplegable únicamente en Netlify. En producción configurar NODE_ENV=production, APP_URL HTTPS y HOST=0.0.0.0; usar un proxy HTTPS y volumen persistente para /app/data. El Dockerfile incluido permite construir la imagen y servirla en el puerto 3000. No incorporar .env ni data a la imagen.
+La publicación gratuita usa Render Free y Supabase Free. Consultar PUBLICACION-GRATUITA.md. SQLite requiere disco persistente y se reserva para uso local. No es un sitio estático desplegable únicamente en Netlify. En producción configurar NODE_ENV=production, APP_URL HTTPS y HOST=0.0.0.0; usar un proxy HTTPS y volumen persistente para /app/data. El Dockerfile incluido permite construir la imagen y servirla en el puerto 3000. No incorporar .env ni data a la imagen.
 
-Límites de archivos: 10 MB por archivo, 8 por tarea y 100 MB por cuenta. Se guardan en SQLite. Contraseñas con scrypt, cookies HttpOnly/SameSite, control de propiedad en el servidor, comprobación CSRF y tokens OAuth cifrados. Esta entrega no incluye servicio de recuperación de contraseña ni verificación por correo para cuentas locales.
+Límites de archivos: 10 MB por archivo, 8 por tarea y 100 MB por cuenta. Se guardan en PostgreSQL o SQLite según la configuración; consumen la cuota de base de datos. Contraseñas con scrypt, cookies HttpOnly/SameSite, control de propiedad en el servidor, comprobación CSRF y tokens OAuth cifrados. Esta entrega no incluye servicio de recuperación de contraseña ni verificación por correo para cuentas locales.

@@ -1,13 +1,11 @@
-# Crear este servicio requiere aprobar un plan de pago en Render.
 services:
   - type: web
     name: desbloqueate-uc
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
-    numInstances: 1
     envVars:
       - key: NODE_VERSION
         value: 24.22.1
@@ -15,10 +13,7 @@ services:
         value: production
       - key: HOST
         value: 0.0.0.0
-      - key: DATA_DIR
-        value: /var/data/desbloqueate
-    disk:
-      name: datos-estudiantes
-      mountPath: /var/data
-      sizeGB: 1
-
+      - key: DATABASE_URL
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false

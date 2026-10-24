@@ -19,7 +19,8 @@ test('prioritization and escaped calendar export',()=>{
  assert.equal(priority({...t,status:'done'}),-1);
  const output=ics([t],new Map());assert.ok(output.includes('Informe\\; uno\\, dos\\nNuevo'));assert.ok(output.includes('TRIGGER:-PT60M'));
 });
-test('accounts, ownership, uploads, reminders and durable SQLite',async()=>{
+test('accounts, ownership, uploads, reminders and durable storage',async()=>{
+ const tag=Date.now();const email1='qa1-'+tag+'@continental.edu.pe',email2='qa2-'+tag+'@continental.edu.pe';
  const dir=await mkdtemp(resolve(tmpdir(),'desbloqueate-test-'));
  const port=34000+Math.floor(Math.random()*1000),base=`http://localhost:${port}`;
  let child;let logs='';
@@ -30,8 +31,8 @@ test('accounts, ownership, uploads, reminders and durable SQLite',async()=>{
  await start();
  assert.equal((await request('/tasks')).status,401);
  assert.equal((await request('/auth/register',{method:'POST',body:{name:'Alumno',email:'x@gmail.com',password:'test-password-123'}})).status,400);
- const a=await request('/auth/register',{method:'POST',body:{name:'Alumno Uno',email:'test1@continental.edu.pe',password:'test-password-123'}});
- const b=await request('/auth/register',{method:'POST',body:{name:'Alumno Dos',email:'test2@continental.edu.pe',password:'test-password-123'}});
+ const a=await request('/auth/register',{method:'POST',body:{name:'Alumno Uno',email:email1,password:'test-password-123'}});
+ const b=await request('/auth/register',{method:'POST',body:{name:'Alumno Dos',email:email2,password:'test-password-123'}});
  assert.equal(a.status,201);assert.equal(b.status,201);assert.equal(a.data.verified,false);
  const catalog=(await request('/catalog')).data,career=catalog.careers[0],course=career.cycles[0].courses[0].id;
  assert.equal(catalog.careers.length,32);assert.ok(course);
@@ -57,6 +58,7 @@ test('accounts, ownership, uploads, reminders and durable SQLite',async()=>{
  await request('/tasks/'+id,{method:'PATCH',cookie:a.cookie,body:{status:'done'}});
  assert.equal((await request('/notifications',{cookie:a.cookie})).data.length,0);
  await request('/auth/logout',{method:'POST',cookie:a.cookie});assert.equal((await request('/tasks',{cookie:a.cookie})).status,401);
- assert.equal((await request('/auth/login',{method:'POST',body:{email:'test1@continental.edu.pe',password:'test-password-123'}})).status,200);
+ assert.equal((await request('/auth/login',{method:'POST',body:{email:email1,password:'test-password-123'}})).status,200);
  }finally{await stop();}
 });
+
