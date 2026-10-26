@@ -52,7 +52,20 @@ test('accounts, ownership, uploads, reminders and durable storage',async()=>{
  assert.equal((await request('/notifications',{cookie:a.cookie})).data.length,1);
  assert.ok((await request('/calendar/export',{cookie:a.cookie})).data.includes('BEGIN:VEVENT'));
  const grades=await request('/grades/'+encodeURIComponent(course),{method:'PUT',cookie:a.cookie,body:{components:[{name:'Final',weight:100,grade:11}]}});assert.equal(grades.data.passed,true);
+
+ const imported=await request('/plans',{method:'POST',cookie:a.cookie,body:{name:'Plan de prueba aislado',cycles:[{number:1,courses:[{name:'Álgebra',credits:4}]},{number:2,courses:[{name:'Programación',credits:3}]}]}});
+ assert.equal(imported.status,201,JSON.stringify(imported));const importedCourse=imported.data.cycles[1].courses[0].id;
+ assert.equal((await request('/catalog',{cookie:a.cookie})).data.careers.length,33);
+ assert.equal((await request('/catalog',{cookie:b.cookie})).data.careers.length,32);
+ assert.equal((await request('/enrollments',{method:'PUT',cookie:b.cookie,body:{courseIds:[importedCourse]}})).status,400);
+ assert.equal((await request('/enrollments',{method:'PUT',cookie:a.cookie,body:{courseIds:[importedCourse]}})).status,200);
+ assert.equal((await request('/grades/'+encodeURIComponent(importedCourse),{method:'PUT',cookie:b.cookie,body:{components:[{name:'Final',weight:100,grade:12}]}})).status,400);
+ await request('/profile',{method:'PATCH',cookie:a.cookie,body:{name:'Alumno Uno',preferences:{theme:'dark'}}});
+ assert.equal((await request('/catalog',{cookie:a.cookie})).data.careers.length,33);
+
  await stop();await start();
+ assert.equal((await request('/catalog',{cookie:a.cookie})).data.careers.length,33);
+ assert.equal((await request('/enrollments',{cookie:a.cookie})).data[0],importedCourse);
  assert.equal((await request('/tasks',{cookie:a.cookie})).data.length,1);
  assert.equal((await request('/grades',{cookie:a.cookie})).data.length,1);
  await request('/tasks/'+id,{method:'PATCH',cookie:a.cookie,body:{status:'done'}});

@@ -23,6 +23,12 @@ const courses = new Map();
 for (const career of catalog.careers)
     for (const cycle of career.cycles)
         cycle.courses.forEach((course, i) => { course.id = `${career.id}:${cycle.number}:${i}`; courses.set(course.id, { ...course, careerId: career.id, career: career.name, cycle: cycle.number }); });
+
+function personalPlans(user){try{return JSON.parse(user?.preferences||'{}').customPlans||[];}catch{return [];}}
+function registerPlan(plan,owner){for(const cy of plan.cycles)for(const co of cy.courses)courses.set(co.id,{...co,careerId:plan.id,career:plan.name,cycle:cy.number,owner});}
+for(const u of await all('SELECT id,preferences FROM users'))for(const plan of personalPlans(u))registerPlan(plan,u.id);
+function accessibleCourses(user){return new Map([...courses].filter(([,c])=>!c.owner||c.owner===user?.id));}
+
 const keyFile = dataDir + '/.token-key';
 if (process.env.DATABASE_URL && !process.env.TOKEN_ENCRYPTION_KEY)
     throw Error('TOKEN_ENCRYPTION_KEY es obligatorio con PostgreSQL.');
@@ -68,10 +74,36 @@ async function owned(req, id) { const t = (await one('SELECT * FROM tasks WHERE 
     e.status = 404;
     throw e;
 } return t; }
-function ensureCourse(id) { if (!courses.has(id))
+function ensureCourse(id,user) { if (!accessibleCourses(user).has(id))
     throw Error('Curso no válido.'); }
+
+app.post('/api/plans',auth,async(req,res)=>{
+ const {name,cycles}=req.body;
+ if(typeof name!=='string'||name.trim().length<3||name.length>100||!Array.isArray(cycles)||!cycles.length||cycles.length>20)throw Error('Revisa el nombre y los ciclos del plan.');
+ const total=cycles.reduce((n,c)=>n+(Array.isArray(c.courses)?c.courses.length:0),0);
+ if(total<1||total>500)throw Error('El plan debe contener entre 1 y 500 cursos.');
+ const nums=new Set();
+ const clean=cycles.map(c=>{
+  if(!Number.isInteger(c.number)||c.number<1||c.number>20||nums.has(c.number)||!Array.isArray(c.courses))throw Error('Ciclos inválidos o repetidos.');
+  nums.add(c.number);const seen=new Set();
+  return {number:c.number,courses:c.courses.map(co=>{
+   if(typeof co.name!=='string'||!co.name.trim()||co.name.length>200)throw Error('Nombre de curso inválido.');
+   const key=co.name.trim().toLocaleLowerCase();if(seen.has(key))throw Error('Curso duplicado en el mismo ciclo.');seen.add(key);
+   const credits=co.credits??null;if(credits!==null&&(!Number.isFinite(credits)||credits<0||credits>100))throw Error('Créditos inválidos.');
+   return {name:co.name.trim(),credits,elective:!!co.elective};
+  })};
+ }).sort((a,b)=>a.number-b.number);
+ const id='custom-'+req.user.id+'-'+sha(JSON.stringify({name:name.trim(),cycles:clean})).slice(0,12);
+ const plan={id,name:name.trim(),faculty:'Plan personal importado',modalities:['presencial','semipresencial','distancia'],sourceUrl:'',consultedAt:new Date().toISOString().slice(0,10),status:'personal',cycles:clean.map(c=>({...c,courses:c.courses.map((co,i)=>({...co,id:id+':'+c.number+':'+i}))}))};
+ const prefs=JSON.parse(req.user.preferences||'{}'),plans=personalPlans(req.user);
+ if(plans.length>=20&&!plans.some(p=>p.id===id))throw Error('Límite de 20 planes personales.');
+ prefs.customPlans=[...plans.filter(p=>p.id!==id),plan];
+ await run('UPDATE users SET preferences=? WHERE id=?',JSON.stringify(prefs),req.user.id);
+ registerPlan(plan,req.user.id);res.status(201).json(plan);
+});
+
 app.get('/api/health', (_, res) => res.json({ ok: true }));
-app.get('/api/catalog', (_, res) => res.json(catalog));
+app.get('/api/catalog', (req, res) => res.json({...catalog,careers:[...catalog.careers,...personalPlans(req.user)]}));
 app.get('/api/session', async (req, res) => res.json({ user: req.user ? (await publicUser(req.user)) : null, googleReady }));
 app.post('/api/auth/register', limit, async (req, res) => {
     const { name, email, password } = req.body;
@@ -105,19 +137,19 @@ app.patch('/api/profile', auth, async (req, res) => {
     if (typeof name !== 'string' || name.trim().length < 2 || name.length > 80)
         throw Error('Revisa tu nombre.');
     const p = preferences || {}, clean = { theme: ['light', 'dark'].includes(p.theme) ? p.theme : 'light', accent: ['violet', 'blue', 'rose', 'teal'].includes(p.accent) ? p.accent : 'violet', compact: Boolean(p.compact), reduceMotion: Boolean(p.reduceMotion), careerId: catalog.careers.some(c => c.id === p.careerId) ? p.careerId : 'ingenieria-de-sistemas-e-informatica', cycle: Math.min(14, Math.max(1, Number(p.cycle) || 1)) };
-    (await run('UPDATE users SET name=?,preferences=? WHERE id=?', name.trim(), JSON.stringify(clean), req.user.id));
+    (await run('UPDATE users SET name=?,preferences=? WHERE id=?', name.trim(), JSON.stringify({...JSON.parse(req.user.preferences||'{}'),...clean}), req.user.id));
     res.json((await publicUser((await one('SELECT * FROM users WHERE id=?', req.user.id)))));
 });
 app.get('/api/tasks', auth, async (req, res) => res.json(await Promise.all((await all('SELECT * FROM tasks WHERE user_id=? ORDER BY due_at', req.user.id)).map(taskOut))));
 app.post('/api/tasks', auth, async (req, res) => {
     if ((await one('SELECT count(*) n FROM tasks WHERE user_id=?', req.user.id)).n >= 1000)
         throw Error('Alcanzaste el límite de 1000 tareas.');
-    const t = validateTask(req.body, courses), id = randomUUID(), now = new Date().toISOString();
+    const t = validateTask(req.body, accessibleCourses(req.user)), id = randomUUID(), now = new Date().toISOString();
     (await run('INSERT INTO tasks(id,user_id,title,description,course_id,due_at,status,visibility,effort,importance,reminder,created_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', id, req.user.id, ...Object.values(t), now, t.status === 'done' ? now : null));
     res.status(201).json((await taskOut((await owned(req, id)))));
 });
 app.patch('/api/tasks/:id', auth, async (req, res) => {
-    const old = (await owned(req, req.params.id)), t = validateTask({ ...old, ...req.body }, courses);
+    const old = (await owned(req, req.params.id)), t = validateTask({ ...old, ...req.body }, accessibleCourses(req.user));
     (await run('UPDATE tasks SET title=?,description=?,course_id=?,due_at=?,status=?,visibility=?,effort=?,importance=?,reminder=?,completed_at=? WHERE id=? AND user_id=?', ...Object.values(t), t.status === 'done' ? (old.completed_at || new Date().toISOString()) : null, old.id, req.user.id));
     if (t.status === 'done' || t.due_at !== old.due_at || t.reminder !== old.reminder)
         (await run('DELETE FROM notifications WHERE task_id=?', old.id));
@@ -164,9 +196,9 @@ app.delete('/api/files/:id', auth, async (req, res) => { const f = (await one('S
     return res.status(404).json({ error: 'Archivo no encontrado.' }); (await run('DELETE FROM attachments WHERE id=?', f.id)); res.json({ ok: true }); });
 app.get('/api/enrollments', auth, async (req, res) => res.json((await all('SELECT course_id FROM enrollments WHERE user_id=?', req.user.id)).map(r => r.course_id)));
 app.put('/api/enrollments', auth, async (req, res) => { const ids = req.body.courseIds; if (!Array.isArray(ids) || ids.length > 100)
-    throw Error('Selecciona hasta 100 cursos.'); ids.forEach(ensureCourse); await db.batch([['DELETE FROM enrollments WHERE user_id=?', req.user.id], ...[...new Set(ids)].map(id => ['INSERT INTO enrollments VALUES(?,?)', req.user.id, id])]); res.json(ids); });
+    throw Error('Selecciona hasta 100 cursos.'); ids.forEach(id=>ensureCourse(id,req.user)); await db.batch([['DELETE FROM enrollments WHERE user_id=?', req.user.id], ...[...new Set(ids)].map(id => ['INSERT INTO enrollments VALUES(?,?)', req.user.id, id])]); res.json(ids); });
 app.get('/api/grades', auth, async (req, res) => res.json((await all('SELECT course_id,components FROM grades WHERE user_id=?', req.user.id)).map(g => ({ ...g, components: JSON.parse(g.components) }))));
-app.put('/api/grades/:course', auth, async (req, res) => { ensureCourse(req.params.course); const result = calculateGrades(req.body.components); (await run('INSERT INTO grades VALUES(?,?,?) ON CONFLICT(user_id,course_id) DO UPDATE SET components=excluded.components', req.user.id, req.params.course, JSON.stringify(req.body.components))); res.json(result); });
+app.put('/api/grades/:course', auth, async (req, res) => { ensureCourse(req.params.course,req.user); const result = calculateGrades(req.body.components); (await run('INSERT INTO grades VALUES(?,?,?) ON CONFLICT(user_id,course_id) DO UPDATE SET components=excluded.components', req.user.id, req.params.course, JSON.stringify(req.body.components))); res.json(result); });
 async function remind() {
     const now = Date.now();
     for (const t of (await all("SELECT * FROM tasks WHERE status!='done'"))) {
