@@ -1,0 +1,24 @@
+-- Ejecutar solo después de autorizar la publicación; no borra datos.
+BEGIN;
+SET search_path=planner;
+CREATE TABLE IF NOT EXISTS task_signals(task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,difficulty INTEGER NOT NULL DEFAULT 2 CHECK(difficulty BETWEEN 1 AND 3),progress INTEGER NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 100));
+CREATE TABLE IF NOT EXISTS study_blocks(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,start_at TEXT NOT NULL,end_at TEXT NOT NULL,event_id TEXT);
+CREATE INDEX IF NOT EXISTS study_owner_start ON study_blocks(user_id,start_at);
+CREATE TABLE IF NOT EXISTS ai_usage(bucket TEXT PRIMARY KEY,n INTEGER NOT NULL DEFAULT 0);
+
+ALTER TABLE task_signals ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON task_signals FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE,DELETE ON task_signals TO planner_app;
+DROP POLICY IF EXISTS server_access ON task_signals;
+CREATE POLICY server_access ON task_signals TO planner_app USING(true) WITH CHECK(true);
+ALTER TABLE study_blocks ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON study_blocks FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE,DELETE ON study_blocks TO planner_app;
+DROP POLICY IF EXISTS server_access ON study_blocks;
+CREATE POLICY server_access ON study_blocks TO planner_app USING(true) WITH CHECK(true);
+ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON ai_usage FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE,DELETE ON ai_usage TO planner_app;
+DROP POLICY IF EXISTS server_access ON ai_usage;
+CREATE POLICY server_access ON ai_usage TO planner_app USING(true) WITH CHECK(true);
+COMMIT;

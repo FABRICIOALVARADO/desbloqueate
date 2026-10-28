@@ -1,7 +1,7 @@
 {
   "name": "desbloqueate",
-  "version": "2.0.0",
-  "description": "DesbloquÃ©ate: tablero de entregas universitarias priorizado por urgencia",
+  "version": "0.2.4",
+  "description": "Desbloquéate UC: organización universitaria con control del estudiante",
   "author": "Fabricio Alvarado Mauricio",
   "private": true,
   "scripts": {
@@ -14,11 +14,11 @@
     "data:refresh": "node scripts/import-curriculum.mjs"
   },
   "dependencies": {
-    "@angular/common": "^17.3.0",
-    "@angular/compiler": "^17.3.0",
-    "@angular/core": "^17.3.0",
-    "@angular/forms": "^17.3.0",
-    "@angular/platform-browser": "^17.3.0",
+    "@angular/common": "20.3.34",
+    "@angular/compiler": "20.3.34",
+    "@angular/core": "20.3.34",
+    "@angular/forms": "20.3.34",
+    "@angular/platform-browser": "20.3.34",
     "@types/three": "^0.180.0",
     "bootstrap": "^5.3.3",
     "bootstrap-icons": "^1.11.3",
@@ -31,13 +31,13 @@
     "sweetalert2": "^11.10.8",
     "three": "^0.180.0",
     "tslib": "^2.6.2",
-    "zone.js": "~0.14.3"
+    "zone.js": "~0.15.1"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^17.3.0",
-    "@angular/cli": "^17.3.0",
-    "@angular/compiler-cli": "^17.3.0",
-    "typescript": "~5.4.2"
+    "@angular-devkit/build-angular": "20.3.42",
+    "@angular/cli": "20.3.42",
+    "@angular/compiler-cli": "20.3.34",
+    "typescript": "~5.9.3"
   },
   "engines": {
     "node": ">=24.0.0"

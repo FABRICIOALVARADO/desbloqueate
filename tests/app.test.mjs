@@ -63,7 +63,32 @@ test('accounts, ownership, uploads, reminders and durable storage',async()=>{
  await request('/profile',{method:'PATCH',cookie:a.cookie,body:{name:'Alumno Uno',preferences:{theme:'dark'}}});
  assert.equal((await request('/catalog',{cookie:a.cookie})).data.careers.length,33);
 
+
+ // v0.2.4 consent, isolation and confirmation must be enforced by the server.
+ const window={start:new Date(Date.now()+600000).toISOString(),end:new Date(Date.now()+7800000).toISOString()};
+ assert.equal((await request('/study/propose',{method:'POST',body:window})).status,401);
+ assert.equal((await request('/study/propose',{method:'POST',cookie:a.cookie,body:{...window,useAI:true}})).status,403);
+ assert.equal((await request('/study/propose',{method:'POST',cookie:a.cookie,body:{...window,useCalendar:true}})).status,403);
+ assert.equal((await request('/study/propose',{method:'POST',cookie:a.cookie,body:{...window,useAI:true,consent:true}})).status,503);
+ const before=(await request('/tasks',{cookie:a.cookie})).data;
+ const proposed=await request('/study/propose',{method:'POST',cookie:a.cookie,body:window});assert.equal(proposed.status,200,JSON.stringify(proposed));assert.ok(proposed.data.blocks.length);
+ assert.deepEqual((await request('/tasks',{cookie:a.cookie})).data.map(t=>t.due_at),before.map(t=>t.due_at));
+ assert.equal((await request('/study/blocks',{cookie:a.cookie})).data.length,0);
+ assert.equal((await request('/study/accept',{method:'POST',cookie:a.cookie,body:{blocks:proposed.data.blocks}})).status,403);
+ assert.equal((await request('/study/accept',{method:'POST',cookie:b.cookie,body:{blocks:proposed.data.blocks,confirm:true}})).status,400);
+ const savedPlan=await request('/study/accept',{method:'POST',cookie:a.cookie,body:{blocks:proposed.data.blocks,confirm:true}});assert.equal(savedPlan.status,200,JSON.stringify(savedPlan));assert.ok(savedPlan.data.length);
+ assert.equal((await request('/study/blocks',{cookie:b.cookie})).data.length,0);
+ assert.equal((await request('/study/accept',{method:'POST',cookie:a.cookie,body:{blocks:proposed.data.blocks,confirm:true}})).status,409);
+ assert.equal((await request('/study/publish',{method:'POST',cookie:a.cookie,body:{ids:savedPlan.data.map(b=>b.id)}})).status,403);
+ assert.equal((await request('/calendar/availability',{method:'POST',cookie:a.cookie,body:window})).status,403);
+ assert.equal((await request('/calendar/availability',{method:'POST',cookie:a.cookie,body:{...window,consent:true}})).status,409);
+ assert.equal((await request('/calendar/disconnect',{method:'POST',cookie:a.cookie,body:{}})).data.revoked,true);
+ const signal=await request('/tasks/'+id,{method:'PATCH',cookie:a.cookie,body:{difficulty:3,progress:40}});assert.equal(signal.data.difficulty,3);assert.equal(signal.data.progress,40);
+ assert.equal((await request('/tasks/'+id,{method:'PATCH',cookie:b.cookie,body:{difficulty:1}})).status,404);
  await stop();await start();
+ assert.equal((await request('/study/blocks',{cookie:a.cookie})).data.length,savedPlan.data.length);
+ assert.equal((await request('/tasks',{cookie:a.cookie})).data[0].difficulty,3);
+
  assert.equal((await request('/catalog',{cookie:a.cookie})).data.careers.length,33);
  assert.equal((await request('/enrollments',{cookie:a.cookie})).data[0],importedCourse);
  assert.equal((await request('/tasks',{cookie:a.cookie})).data.length,1);

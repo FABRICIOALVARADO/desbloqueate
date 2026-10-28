@@ -1,3 +1,5 @@
+import {registerPlanning} from './planning-routes.mjs';
+import {scopesFor,busyScope} from './calendar-service.mjs';
 import express from 'express';
 import multer from 'multer';
 import { openDatabase } from './database.mjs';
@@ -68,12 +70,13 @@ function limit(req, res, next) { const k = req.ip, now = Date.now(), r = attempt
     r.until = now + 600000;
 } r.count++; attempts.set(k, r); if (r.count > 40)
     return res.status(429).json({ error: 'Demasiados intentos. Espera 10 minutos.' }); next(); }
-async function taskOut(t) { return { ...t, course: courses.get(t.course_id), attachments: (await all('SELECT id,name,size,mime FROM attachments WHERE task_id=?', t.id)), priority: priority(t) }; }
+async function taskOut(t) { const signal=await one('SELECT difficulty,progress FROM task_signals WHERE task_id=?',t.id); return { ...t,difficulty:signal?.difficulty??2,progress:t.status==='done'?100:(signal?.progress??0), course: courses.get(t.course_id), attachments: (await all('SELECT id,name,size,mime FROM attachments WHERE task_id=?', t.id)), priority: priority({...t,...signal}) }; }
 async function owned(req, id) { const t = (await one('SELECT * FROM tasks WHERE id=? AND user_id=?', id, req.user.id)); if (!t) {
     const e = Error('Tarea no encontrada.');
     e.status = 404;
     throw e;
 } return t; }
+function validateSignal(b){const difficulty=b.difficulty??2,progress=b.progress??0;if(![1,2,3].includes(difficulty)||!Number.isInteger(progress)||progress<0||progress>100)throw Error('Revisa la dificultad y el avance (0 a 100).');return {difficulty,progress};}
 function ensureCourse(id,user) { if (!accessibleCourses(user).has(id))
     throw Error('Curso no válido.'); }
 
@@ -102,7 +105,7 @@ app.post('/api/plans',auth,async(req,res)=>{
  registerPlan(plan,req.user.id);res.status(201).json(plan);
 });
 
-app.get('/api/health', (_, res) => res.json({ ok: true }));
+app.get('/api/health', (_, res) => res.json({ ok: true, version: "0.2.4" }));
 app.get('/api/catalog', (req, res) => res.json({...catalog,careers:[...catalog.careers,...personalPlans(req.user)]}));
 app.get('/api/session', async (req, res) => res.json({ user: req.user ? (await publicUser(req.user)) : null, googleReady }));
 app.post('/api/auth/register', limit, async (req, res) => {
@@ -136,7 +139,7 @@ app.patch('/api/profile', auth, async (req, res) => {
     const { name, preferences } = req.body;
     if (typeof name !== 'string' || name.trim().length < 2 || name.length > 80)
         throw Error('Revisa tu nombre.');
-    const p = preferences || {}, clean = { theme: ['light', 'dark'].includes(p.theme) ? p.theme : 'light', accent: ['violet', 'blue', 'rose', 'teal'].includes(p.accent) ? p.accent : 'violet', compact: Boolean(p.compact), reduceMotion: Boolean(p.reduceMotion), careerId: catalog.careers.some(c => c.id === p.careerId) ? p.careerId : 'ingenieria-de-sistemas-e-informatica', cycle: Math.min(14, Math.max(1, Number(p.cycle) || 1)) };
+    const p = preferences || {}, clean = { theme: ['light', 'dark'].includes(p.theme) ? p.theme : 'light', accent: ['violet', 'blue', 'rose', 'teal'].includes(p.accent) ? p.accent : 'violet', compact: Boolean(p.compact), reduceMotion: Boolean(p.reduceMotion), careerId: [...catalog.careers,...personalPlans(req.user)].some(c => c.id === p.careerId) ? p.careerId : 'ingenieria-de-sistemas-e-informatica', cycle: Math.min(20, Math.max(0, Number(p.cycle) || 0)) };
     (await run('UPDATE users SET name=?,preferences=? WHERE id=?', name.trim(), JSON.stringify({...JSON.parse(req.user.preferences||'{}'),...clean}), req.user.id));
     res.json((await publicUser((await one('SELECT * FROM users WHERE id=?', req.user.id)))));
 });
@@ -145,12 +148,14 @@ app.post('/api/tasks', auth, async (req, res) => {
     if ((await one('SELECT count(*) n FROM tasks WHERE user_id=?', req.user.id)).n >= 1000)
         throw Error('Alcanzaste el límite de 1000 tareas.');
     const t = validateTask(req.body, accessibleCourses(req.user)), id = randomUUID(), now = new Date().toISOString();
-    (await run('INSERT INTO tasks(id,user_id,title,description,course_id,due_at,status,visibility,effort,importance,reminder,created_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', id, req.user.id, ...Object.values(t), now, t.status === 'done' ? now : null));
+    const signal=validateSignal(req.body);
+    await db.batch([['INSERT INTO tasks(id,user_id,title,description,course_id,due_at,status,visibility,effort,importance,reminder,created_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',id,req.user.id,...Object.values(t),now,t.status==='done'?now:null],['INSERT INTO task_signals VALUES(?,?,?)',id,signal.difficulty,signal.progress]]);
     res.status(201).json((await taskOut((await owned(req, id)))));
 });
 app.patch('/api/tasks/:id', auth, async (req, res) => {
     const old = (await owned(req, req.params.id)), t = validateTask({ ...old, ...req.body }, accessibleCourses(req.user));
-    (await run('UPDATE tasks SET title=?,description=?,course_id=?,due_at=?,status=?,visibility=?,effort=?,importance=?,reminder=?,completed_at=? WHERE id=? AND user_id=?', ...Object.values(t), t.status === 'done' ? (old.completed_at || new Date().toISOString()) : null, old.id, req.user.id));
+    const signal=validateSignal({...await one('SELECT difficulty,progress FROM task_signals WHERE task_id=?',old.id),...req.body});
+    await db.batch([['UPDATE tasks SET title=?,description=?,course_id=?,due_at=?,status=?,visibility=?,effort=?,importance=?,reminder=?,completed_at=? WHERE id=? AND user_id=?',...Object.values(t),t.status==='done'?(old.completed_at||new Date().toISOString()):null,old.id,req.user.id],['INSERT INTO task_signals VALUES(?,?,?) ON CONFLICT(task_id) DO UPDATE SET difficulty=excluded.difficulty,progress=excluded.progress',old.id,signal.difficulty,signal.progress]]);
     if (t.status === 'done' || t.due_at !== old.due_at || t.reminder !== old.reminder)
         (await run('DELETE FROM notifications WHERE task_id=?', old.id));
     res.json((await taskOut((await owned(req, old.id)))));
@@ -220,16 +225,14 @@ app.get('/api/calendar/export', auth, async (req, res) => { res.type('text/calen
 app.get('/api/auth/google', limit, async (req, res) => {
     if (!googleReady)
         return res.redirect('/?authError=google-config');
-    const mode = req.query.mode === 'calendar' ? 'calendar' : 'login';
-    if (mode === 'calendar' && !req.user)
+    const mode = ['calendar','availability','link'].includes(req.query.mode) ? req.query.mode : 'login';
+    if (mode !== 'login' && !req.user)
         return res.redirect('/?authError=login-required');
     const state = randomBytes(24).toString('hex'), browser = randomBytes(24).toString('hex'), verifier = randomBytes(32).toString('base64url'), nonce = randomBytes(24).toString('hex');
     (await run('INSERT INTO oauth_states VALUES(?,?,?,?,?,?,?)', state, sha(browser), verifier, nonce, mode, req.user?.id || null, Date.now() + 600000));
     res.cookie('db_oauth', browser, { httpOnly: true, secure: PROD, sameSite: 'lax', maxAge: 600000, path: '/' });
-    const scopes = ['openid', 'email', 'profile'];
-    if (mode === 'calendar')
-        scopes.push('https://www.googleapis.com/auth/calendar.app.created');
-    res.redirect(oauth().generateAuthUrl({ access_type: mode === 'calendar' ? 'offline' : 'online', scope: scopes, state, nonce, hd: 'continental.edu.pe', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', ...(mode === 'calendar' ? { prompt: 'consent' } : { prompt: 'select_account' }) }));
+    const scopes = scopesFor(mode);
+    res.redirect(oauth().generateAuthUrl({ access_type: mode !== 'login' ? 'offline' : 'online', scope: scopes, state, nonce, hd: 'continental.edu.pe', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', ...(mode !== 'login' ? { prompt: 'consent' } : { prompt: 'select_account' }) }));
 });
 app.get('/api/auth/google/callback', async (req, res) => {
     try {
@@ -245,12 +248,14 @@ app.get('/api/auth/google/callback', async (req, res) => {
         if (!p?.email_verified || p.hd !== 'continental.edu.pe' || !p.email?.endsWith('@continental.edu.pe') || p.nonce !== state.nonce)
             throw Error('Utiliza tu cuenta institucional de Continental.');
         let user = (await one('SELECT * FROM users WHERE google_sub=?', p.sub));
-        if (state.mode === 'calendar') {
+        if (state.mode !== 'login') {
             if (!req.user || req.user.id !== state.user_id || req.user.email !== p.email.toLowerCase())
                 throw Error('Conecta el mismo correo de tu cuenta.');
             if (user && user.id !== req.user.id)
                 throw Error('Esa cuenta de Google ya está vinculada.');
             user = req.user;
+            if(state.mode==='availability'&&!(tokens.scope||'').split(' ').includes(busyScope))throw Error('Falta autorizar disponibilidad.');
+            if(state.mode!=='link'){
             if (!(tokens.scope || '').split(' ').includes('https://www.googleapis.com/auth/calendar.app.created'))
                 throw Error('Falta el permiso de Calendar.');
             const old = (await one('SELECT * FROM calendar_connections WHERE user_id=?', user.id)), previous = old ? decrypt(old.tokens) : {};
@@ -258,6 +263,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
                 throw Error('Google no entregó permiso de acceso continuo. Vuelve a conectar Calendar.');
             (await run('UPDATE users SET google_sub=?,verified=1 WHERE id=?', p.sub, user.id));
             (await run('INSERT INTO calendar_connections VALUES(?,?,NULL) ON CONFLICT(user_id) DO UPDATE SET tokens=excluded.tokens', user.id, encrypt({ ...previous, ...tokens, refresh_token: tokens.refresh_token || previous.refresh_token })));
+            }else{await run('UPDATE users SET google_sub=?,verified=1 WHERE id=?',p.sub,user.id);}
         }
         else if (!user) {
             if ((await one('SELECT id FROM users WHERE email=?', p.email.toLowerCase())))
@@ -332,11 +338,13 @@ app.get('/api/calendar/events', auth, async (req, res) => {
 });
 app.post('/api/calendar/disconnect', auth, async (req, res) => { const conn = (await one('SELECT * FROM calendar_connections WHERE user_id=?', req.user.id)); if (conn) {
     const tokens = decrypt(conn.tokens);
-    if (tokens.refresh_token)
-        await oauth().revokeToken(tokens.refresh_token).catch(() => { });
+    let revoked=true;
+    if(tokens.refresh_token)try{await oauth().revokeToken(tokens.refresh_token);}catch{revoked=false;}
+    res.locals.revoked=revoked;
     (await run('DELETE FROM calendar_connections WHERE user_id=?', req.user.id));
     (await run('DELETE FROM calendar_events WHERE task_id IN (SELECT id FROM tasks WHERE user_id=?)', req.user.id));
-} res.json({ ok: true }); });
+} res.json({ok:true,revoked:res.locals.revoked!==false}); });
+registerPlanning(app,{db,auth,calendarClient,taskOut,courses});
 app.use('/api', (_, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
 const dist = root + '/dist/desbloqueate/browser';
 app.use(express.static(dist, { index: false }));
@@ -347,7 +355,7 @@ else
 app.use((error, req, res, next) => { if (res.headersSent)
     return next(error); const status = error.status || ((error.code === 'LIMIT_FILE_SIZE') ? 413 : 400); if (error.code === 'LIMIT_FILE_SIZE')
     return res.status(413).json({ error: 'El archivo supera 10 MB.' }); if (error.response)
-    console.error('External API error', error.response.status); res.status(status).json({ error: error.response ? 'No se pudo completar la conexión con Google. Revisa permisos y vuelve a intentar.' : error.message || 'No se pudo completar la operación.' }); });
+    console.error('External API error', error.response.status); res.status(status).json({ error: error.response ? 'No se pudo completar la conexión con Google. Revisa permisos y vuelve a intentar.' : (error.code||error.name==='SyntaxError')?'No se pudo procesar la solicitud. Revisa los datos e intenta otra vez.':error.message || 'No se pudo completar la operación.' }); });
 const timer = setInterval(() => remind().catch(e => console.error('Reminder scan failed:', e.message)), 30000);
 timer.unref();
 const server = app.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`Desbloquéate: ${BASE}`));

@@ -12,7 +12,7 @@ export function postgresSQL(sql){
 export async function openDatabase(root,dataDir){
  if(!process.env.DATABASE_URL){
   if(process.env.RENDER==='true')throw Error('La publicación gratuita requiere DATABASE_URL persistente; no se permite SQLite temporal.');
-  const local=new DatabaseSync(dataDir+'/desbloqueate.sqlite');local.exec(readFileSync(root+'/server/schema.sql','utf8'));
+  const local=new DatabaseSync(dataDir+'/desbloqueate.sqlite');local.exec(readFileSync(root+'/server/schema.sql','utf8'));local.exec(readFileSync(root+'/server/schema-v024.sql','utf8'));
   return {one:async(sql,...p)=>local.prepare(sql).get(...p),all:async(sql,...p)=>local.prepare(sql).all(...p),run:async(sql,...p)=>local.prepare(sql).run(...p),close:async()=>local.close(),batch:async(statements)=>{local.exec('BEGIN');try{for(const [sql,...p] of statements)local.prepare(sql).run(...p);local.exec('COMMIT');}catch(e){local.exec('ROLLBACK');throw e;}}};
  }
  const url=new URL(process.env.DATABASE_URL);url.searchParams.delete('sslmode');url.searchParams.delete('sslrootcert');

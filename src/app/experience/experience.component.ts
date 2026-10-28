@@ -19,7 +19,7 @@ export class ExperienceComponent implements AfterViewInit,OnDestroy{
  moveCareer(delta:number){const cards=this.careerTrack?.nativeElement.children;const i=Math.max(0,Math.min(this.careerResults.length-1,this.careerIndex+delta));(cards?.[i] as HTMLElement|undefined)?.scrollIntoView({behavior:this.reduceMotion?'auto':'smooth',block:'nearest',inline:'center'});}
  selectCareer(id:string){this.chooseCareer.emit(id);this.careerOpen=false;this.leave('courses');}
  activate(){this.current.view==='courses'?this.openCareers():this.leave(this.current.view);}
-@Input() reduceMotion=false;
+@Input() reduceMotion=false;@Input() directEntry=true;
  pencilX=0;pencilY=0;pencilVisible=false;
  ready=false;failed=false;started=false;stage=0;visited=new Set<number>();menu=false;audioOn=false;audioError='';drawing=false;trace='';drawingHint='';dragged=false;
  stages=[
@@ -33,7 +33,7 @@ export class ExperienceComponent implements AfterViewInit,OnDestroy{
  constructor(private zone:NgZone,private cd:ChangeDetectorRef){}
  async ngAfterViewInit(){this.oldOverflow=document.body.style.overflow;document.body.style.overflow='hidden';this.reduceMotion=this.reduceMotion||matchMedia('(prefers-reduced-motion: reduce)').matches;try{const {CampusScene}=await import('./campus-scene');if(this.dead)return;this.zone.runOutsideAngular(()=>this.scene=new CampusScene(this.canvas.nativeElement,this.reduceMotion,n=>this.zone.run(()=>this.setStage(n))));this.ready=true;this.cd.detectChanges();}catch{this.failed=true;this.ready=true;this.cd.detectChanges();}}
  get current(){return this.stages[this.stage];}
- begin(){if(!this.ready)return;this.started=true;this.visited.add(0);this.scene?.start();this.trace='';this.drawing=false;this.drawingHint='';}
+ begin(){if(!this.ready)return;if(this.directEntry){this.leave('tasks');return;}this.started=true;this.visited.add(0);this.scene?.start();this.trace='';this.drawing=false;this.drawingHint='';}
  setStage(n:number){if(!this.started)this.begin();this.stage=(n+this.stages.length)%this.stages.length;this.visited.add(this.stage);this.scene?.setStage(this.stage);}
  leave(view='home'){this.enter.emit(view);}
  toggleMotion(){this.reduceMotion=!this.reduceMotion;this.scene?.setReduced(this.reduceMotion);}
