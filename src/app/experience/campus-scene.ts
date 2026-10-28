@@ -1,3 +1,4 @@
+import {FloatingIcons} from './floating-icons';
 import * as T from 'three';
 import {RoundedBoxGeometry} from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import {SVGLoader} from 'three/examples/jsm/loaders/SVGLoader.js';
@@ -14,20 +15,7 @@ export class CampusScene{
  const data=new SVGLoader().parse(ucMark);for(const p of data.paths)for(const shape of SVGLoader.createShapes(p)){const geo=new T.ExtrudeGeometry(shape,{depth:2,bevelEnabled:true,bevelSegments:3,steps:1,bevelSize:.35,bevelThickness:.35,curveSegments:24});geo.translate(-26.8,-19.5,-1);const m=new T.Mesh(geo,this.mat('#f5efff'));m.scale.set(.075,-.075,.075);this.logo.add(m);}
  this.world.add(this.logo);this.logo.rotation.y=-.14;
  const positions=[[-4.8,2.25],[4.8,2.25],[-4.8,-1.55],[4.8,-1.55]];
- positions.forEach(([x,y],i)=>{const g=new T.Group();g.position.set(x,y,0);g.userData['baseY']=y;g.userData['stage']=i+1;g.rotation.set(.08,i%2?-.2:.2,i%2?.06:-.06);this.world.add(g);this.icons.push(g);
- if(i===0){ // soft stacked books
- for(let j=0;j<3;j++){const book=new T.Group();book.position.set(0,(j-1)*.52,0);book.rotation.y=(j-1)*.12;g.add(book);this.box(book,0,0,0,2.2,.43,1.25,['#b59ae5','#88b7bd','#e8b578'][j]);this.box(book,.08,.015,.045,1.94,.27,1.2,'#fff5e2',.05);}
- }else if(i===1){ // calculator, raised keys and display
- this.box(g,0,0,0,1.65,2.3,.55,'#b4a1df');this.box(g,0,.65,.3,1.25,.43,.08,'#363747',.05);
- for(let row=0;row<3;row++)for(let col=0;col<3;col++)this.box(g,(col-1)*.44,-.05-row*.43,.33,.3,.3,.18,col===2?'#e9bc7c':'#f7efe7',.08);
- this.box(g,.3,.65,.36,.34,.035,.02,'#d6eccb',.01);
- }else if(i===2){ // clipboard with raised check and lines
- this.box(g,0,0,0,1.85,2.3,.25,'#dbb589');this.box(g,0,-.02,.16,1.57,1.98,.08,'#fff5e8',.07);this.box(g,0,1.03,.22,.75,.29,.2,'#b79add',.09);
- for(let row=0;row<3;row++){this.box(g,.22,.48-row*.5,.23,.76,.09,.06,'#ada5be',.03);const tick=this.box(g,-.49,.48-row*.5,.23,.24,.09,.08,'#86b5a0',.03);tick.rotation.z=.6;}
- }else{ // friendly community silhouettes and speech bubble
- for(const [xx,yy,rr,cc] of [[-.65,0,.3,'#9fbac8'],[.65,0,.3,'#dcb68e'],[0,.35,.36,'#b69be5']] as [number,number,number,string][]){this.ball(g,xx,yy+.3,.1,rr,cc);this.box(g,xx,yy-.35,0,rr*1.8,.75,.55,cc,.2);}
- this.box(g,.9,1.15,0,1.05,.62,.3,'#f6efdf',.17);for(let k=0;k<3;k++)this.ball(g,.65+k*.25,1.15,.18,.055,'#9e8bbd');
- }
+ positions.forEach(([x,y],i)=>{const g=new FloatingIcons().create(i);g.position.set(x,y,0);g.userData['baseY']=y;g.userData['stage']=i+1;g.rotation.set(.08,i%2?-.2:.2,i%2?.06:-.06);this.world.add(g);this.icons.push(g);
  g.traverse(o=>{if(o instanceof T.Mesh){o.userData['stage']=i+1;this.hit.push(o);}});
  });
  // A delicate orbital line makes the central relationship clear without a ground plane.

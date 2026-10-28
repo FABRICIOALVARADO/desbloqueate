@@ -1,3 +1,4 @@
+import {rankTask} from '../src/app/domain/planning.ts';
 export function calculateGrades(rows,target=10.5){
  if(!Array.isArray(rows)||rows.length<1||rows.length>20)throw Error('Ingresa entre 1 y 20 evaluaciones.');
  let total=0,earned=0,known=0;
@@ -11,11 +12,7 @@ export function calculateGrades(rows,target=10.5){
  const remaining=100-known,needed=remaining>0?Math.max(0,(target-earned)/(remaining/100)):null;
  return {earned,known,remaining,needed,possible:needed===null?earned>=target:needed<=20,current:known?earned/(known/100):null,final:remaining===0?earned:null,rounded:remaining===0?Math.floor(earned+0.5):null,passed:earned>=target};
 }
-export function priority(task,now=Date.now()){
- if(task.status==='done')return -1;
- const hours=(Date.parse(task.due_at)-now)/3600000;
- return (hours<=0?10000:Math.max(0,168-hours)*10)+task.importance*30+Math.min(task.effort,480)/8+(task.status==='working'?20:0);
-}
+export function priority(task,now=Date.now()){return rankTask(task,now).score;}
 export function validateTask(b,courses){
  if(typeof b.title!=='string'||b.title.trim().length<3||b.title.length>160)throw Error('El título debe tener entre 3 y 160 caracteres.');
  if(!courses.has(b.course_id))throw Error('Selecciona un curso válido de la malla.');

@@ -1,3 +1,7 @@
+# Versión 0.2.4
+
+Consulta [cambios, pruebas y límites](docs/V0.2.4.md) y [configuración segura de Google e IA](docs/CONFIGURACION.md).
+
 # Desbloquéate · Universidad Continental, Huancayo
 
 Aplicación de organización académica con Angular, servidor Node.js y base de datos PostgreSQL en la nube o SQLite local. Proyecto estudiantil independiente, sin afiliación oficial a la Universidad Continental.
