@@ -20,7 +20,7 @@ test('prioritization and escaped calendar export',()=>{
  const output=ics([t],new Map());assert.ok(output.includes('Informe\\; uno\\, dos\\nNuevo'));assert.ok(output.includes('TRIGGER:-PT60M'));
 });
 test('accounts, ownership, uploads, reminders and durable storage',async()=>{
- const tag=Date.now();const email1='qa1-'+tag+'@continental.edu.pe',email2='qa2-'+tag+'@continental.edu.pe';
+ const tag=Date.now();const email1='qa1-'+tag+'@gmail.com',email2='qa2-'+tag+'@continental.edu.pe';
  const dir=await mkdtemp(resolve(tmpdir(),'desbloqueate-test-'));
  const port=34000+Math.floor(Math.random()*1000),base=`http://localhost:${port}`;
  let child;let logs='';
@@ -30,7 +30,7 @@ test('accounts, ownership, uploads, reminders and durable storage',async()=>{
  try{
  await start();
  assert.equal((await request('/tasks')).status,401);
- assert.equal((await request('/auth/register',{method:'POST',body:{name:'Alumno',email:'x@gmail.com',password:'test-password-123'}})).status,400);
+ assert.equal((await request('/auth/register',{method:'POST',body:{name:'Alumno',email:'x@untrusted.example',password:'test-password-123'}})).status,400);
  const a=await request('/auth/register',{method:'POST',body:{name:'Alumno Uno',email:email1,password:'test-password-123'}});
  const b=await request('/auth/register',{method:'POST',body:{name:'Alumno Dos',email:email2,password:'test-password-123'}});
  assert.equal(a.status,201);assert.equal(b.status,201);assert.equal(a.data.verified,false);
@@ -99,4 +99,5 @@ test('accounts, ownership, uploads, reminders and durable storage',async()=>{
  assert.equal((await request('/auth/login',{method:'POST',body:{email:email1,password:'test-password-123'}})).status,200);
  }finally{await stop();}
 });
+
 
