@@ -112,8 +112,8 @@ app.post('/api/auth/register', limit, async (req, res) => {
     const { name, email, password } = req.body;
     if (typeof name !== 'string' || name.trim().length < 2 || name.length > 80)
         throw Error('Ingresa tu nombre (2 a 80 caracteres).');
-    if (typeof email !== 'string' || !/^[-a-z0-9._+]+@continental\.edu\.pe$/i.test(email))
-        throw Error('Usa tu correo institucional @continental.edu.pe.');
+    if (typeof email !== 'string' || !/^[-a-z0-9._+]+@(continental\.edu\.pe|gmail\.com)$/i.test(email))
+        throw Error('Usa tu correo Gmail o institucional @continental.edu.pe.');
     if (typeof password !== 'string' || password.length < 10 || password.length > 128)
         throw Error('Crea una contraseña de 10 a 128 caracteres para Desbloquéate.');
     if ((await one('SELECT id FROM users WHERE email=?', email.toLowerCase())))
@@ -232,7 +232,7 @@ app.get('/api/auth/google', limit, async (req, res) => {
     (await run('INSERT INTO oauth_states VALUES(?,?,?,?,?,?,?)', state, sha(browser), verifier, nonce, mode, req.user?.id || null, Date.now() + 600000));
     res.cookie('db_oauth', browser, { httpOnly: true, secure: PROD, sameSite: 'lax', maxAge: 600000, path: '/' });
     const scopes = scopesFor(mode);
-    res.redirect(oauth().generateAuthUrl({ access_type: mode !== 'login' ? 'offline' : 'online', scope: scopes, state, nonce, hd: 'continental.edu.pe', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', ...(mode !== 'login' ? { prompt: 'consent' } : { prompt: 'select_account' }) }));
+    res.redirect(oauth().generateAuthUrl({ access_type: mode !== 'login' ? 'offline' : 'online', scope: scopes, state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', ...(mode !== 'login' ? { prompt: 'consent' } : { prompt: 'select_account' }) }));
 });
 app.get('/api/auth/google/callback', async (req, res) => {
     try {
@@ -245,8 +245,8 @@ app.get('/api/auth/google/callback', async (req, res) => {
             throw Error('Google no autorizó el acceso.');
         const client = oauth(), { tokens } = await client.getToken({ code: String(req.query.code || ''), codeVerifier: state.verifier });
         const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: process.env.GOOGLE_CLIENT_ID }), p = ticket.getPayload();
-        if (!p?.email_verified || p.hd !== 'continental.edu.pe' || !p.email?.endsWith('@continental.edu.pe') || p.nonce !== state.nonce)
-            throw Error('Utiliza tu cuenta institucional de Continental.');
+        if (!p?.email_verified || !/^[-a-z0-9._+]+@(gmail\.com|continental\.edu\.pe)$/i.test(p.email || '') || p.nonce !== state.nonce)
+            throw Error('Utiliza una cuenta Google verificada de Gmail o Continental.');
         let user = (await one('SELECT * FROM users WHERE google_sub=?', p.sub));
         if (state.mode !== 'login') {
             if (!req.user || req.user.id !== state.user_id || req.user.email !== p.email.toLowerCase())
@@ -360,4 +360,5 @@ const timer = setInterval(() => remind().catch(e => console.error('Reminder scan
 timer.unref();
 const server = app.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`Desbloquéate: ${BASE}`));
 process.on('SIGTERM', () => server.close(async () => { await db.close(); process.exit(0); }));
+
 
