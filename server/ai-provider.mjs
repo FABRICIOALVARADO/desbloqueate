@@ -16,7 +16,7 @@ export async function generateAdvice(context,env=process.env,request=fetch){
   const endpoint=new URL(env.AI_BASE_URL||'');if(endpoint.protocol!=='https:')throw Error('El proveedor requiere HTTPS.');
   url=endpoint.href.replace(/\/$/,'')+'/chat/completions';headers={Authorization:'Bearer '+env.AI_API_KEY};body={model:config.model,messages:[{role:'user',content:prompt}],temperature:.2,max_tokens:800,response_format:{type:'json_object'}};
  }
- const response=await request(url,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
+ const response=await request(url,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
  if(!response.ok){let detail;try{detail=await response.json();}catch{} console.warn('AI provider failure',response.status,String(detail?.error?.status||'unknown')); throw Error('El proveedor no está disponible o agotó su cuota. Usa el planificador local.');}
  const raw=await response.text();if(raw.length>40000)throw Error('Respuesta de IA demasiado grande.');
  const data=JSON.parse(raw),text=config.provider==='gemini'?data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join(''):data.choices?.[0]?.message?.content;
