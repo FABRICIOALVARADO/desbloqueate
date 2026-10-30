@@ -42,7 +42,7 @@ export function registerPlanning(app,{db,auth,calendarClient,taskOut,courses}){
    const chosen=ranked.slice(0,10),context={action,request,tasks:chosen.map((t,i)=>({id:'t'+i,title:t.title,course:courses.get(t.course_id)?.name||'',difficulty:t.difficulty,remaining:t.remaining,reasons:t.reasons}))};
    const advice=await generateAdvice(context);
    result.steps=advice.map(s=>({...s,task_id:chosen[Number(s.task_id.slice(1))].id}));result.source='ai';result.notice='Acciones seleccionadas por IA; prioridades y horarios calculados y validados localmente. Revisa antes de aceptar.';
-  }catch{result.notice='La IA no pudo responder de forma válida. Se conserva la propuesta local, sin aplicar cambios.';}
+  }catch(error){console.warn('AI request failed',String(error?.name||'Error'),String(error?.code||error?.cause?.code||'unknown'));result.notice='La IA no pudo responder de forma válida. Se conserva la propuesta local, sin aplicar cambios.';}
   finally{aiLocks.delete(req.user.id);}
   res.json(result);
  });
