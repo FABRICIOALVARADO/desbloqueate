@@ -8,9 +8,11 @@ interface Proposal {ranked:{id:string;title:string;reasons:string[];remaining:nu
 @Component({selector:'app-planning',standalone:true,imports:[CommonModule,FormsModule],templateUrl:'./planning.component.html',styleUrl:'./planning.component.css'})
 export class PlanningComponent implements OnInit {
  @Input() calendarConnected=false;
+ consentVersion='';consentDialog=false;
+ async saveConsent(accepted:boolean){try{await this.api.request('/ai/consent','PUT',{accepted,version:this.consentVersion});this.consent=accepted;this.consentDialog=false;}catch(e){this.error=this.message(e);}}
  status={enabled:false,provider:'',privacy:''};start='';end='';request='';consent=false;calendarConsent=false;busy=false;error='';notice='';proposal:Proposal|null=null;saved:SavedBlock[]=[];action='organize';
  constructor(private api:ApiService){const d=new Date(Date.now()+5*60000);this.start=this.inputDate(d.toISOString());this.end=this.inputDate(new Date(+d+90*60000).toISOString());}
- async ngOnInit(){try{[this.status,this.saved]=await Promise.all([this.api.request('/ai/status'),this.api.request('/study/blocks')]);}catch(e){this.error=this.message(e);}}
+ async ngOnInit(){try{const c=await this.api.request<any>('/ai/consent');this.consent=c.accepted;this.consentVersion=c.version;[this.status,this.saved]=await Promise.all([this.api.request('/ai/status'),this.api.request('/study/blocks')]);}catch(e){this.error=this.message(e);}}
  message(e:unknown){return e instanceof Error?e.message:'No se pudo completar la operación.';}
  inputDate(value:string){if(!value)return "";return new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(value)).replace(' ','T');}
  iso(value:string){return new Date(value+':00-05:00').toISOString();}

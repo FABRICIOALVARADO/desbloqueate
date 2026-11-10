@@ -1,3 +1,6 @@
+import {registerPush} from './push-service.mjs';
+import {registerAcademic} from './academic-routes.mjs';
+import {registerCommunity} from './community-routes.mjs';
 import {registerPlanning} from './planning-routes.mjs';
 import {scopesFor,busyScope} from './calendar-service.mjs';
 import express from 'express';
@@ -105,7 +108,29 @@ app.post('/api/plans',auth,async(req,res)=>{
  registerPlan(plan,req.user.id);res.status(201).json(plan);
 });
 
-app.get('/api/health', (_, res) => res.json({ ok: true, version: "0.2.4" }));
+// Personal course settings stay in the authenticated account; never alter the official catalog.
+app.post('/api/personal-courses',auth,async(req,res)=>{
+ const {name,kind,cycle}=req.body;
+ if(typeof name!=='string'||name.trim().length<2||name.length>120||!['elective','extracurricular'].includes(kind)||!Number.isInteger(cycle)||cycle<1||cycle>20)throw Error('Revisa el nombre, tipo y ciclo del curso.');
+ const prefs=JSON.parse(req.user.preferences||'{}'),id='personal-'+req.user.id;
+ const plans=personalPlans(req.user),old=plans.find(p=>p.id===id);
+ const plan=old||{id,name:'Mis cursos complementarios',faculty:'Personal',modalities:['presencial','semipresencial','distancia'],sourceUrl:'',status:'personal',cycles:[]};
+ if(plan.cycles.reduce((n,c)=>n+c.courses.length,0)>=100)throw Error('Límite de 100 cursos personales.');
+ let group=plan.cycles.find(c=>c.number===cycle);if(!group){group={number:cycle,courses:[]};plan.cycles.push(group);}
+ const course={id:id+':'+randomUUID(),name:name.trim(),credits:null,elective:kind==='elective',kind};group.courses.push(course);plan.cycles.sort((a,b)=>a.number-b.number);
+ prefs.customPlans=[...plans.filter(p=>p.id!==id),plan];
+ await run('UPDATE users SET preferences=? WHERE id=?',JSON.stringify(prefs),req.user.id);registerPlan(plan,req.user.id);res.status(201).json({plan,course});
+});
+app.put('/api/course-settings/:id',auth,async(req,res)=>{
+ const id=req.params.id;ensureCourse(id,req.user);
+ const {name,sessions}=req.body;
+ if(typeof name!=='string'||name.trim().length<2||name.length>120||!Array.isArray(sessions)||sessions.length>14)throw Error('Revisa el nombre y el horario.');
+ const clean=sessions.map(s=>{if(!Number.isInteger(s.day)||s.day<0||s.day>6||!/^([01]\d|2[0-3]):[0-5]\d$/.test(s.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(s.end)||s.start>=s.end)throw Error('La hora final debe ser posterior al inicio.');return {day:s.day,start:s.start,end:s.end};});
+ const prefs=JSON.parse(req.user.preferences||'{}');prefs.courseSettings={...(prefs.courseSettings||{}),[id]:{name:name.trim(),sessions:clean}};
+ await run('UPDATE users SET preferences=? WHERE id=?',JSON.stringify(prefs),req.user.id);res.json(prefs.courseSettings);
+});
+
+app.get('/api/health', (_, res) => res.json({ ok: true, version: "0.3.0" }));
 app.get('/api/catalog', (req, res) => res.json({...catalog,careers:[...catalog.careers,...personalPlans(req.user)]}));
 app.get('/api/session', async (req, res) => res.json({ user: req.user ? (await publicUser(req.user)) : null, googleReady }));
 app.post('/api/auth/register', limit, async (req, res) => {
@@ -150,7 +175,7 @@ app.post('/api/tasks', auth, async (req, res) => {
     const t = validateTask(req.body, accessibleCourses(req.user)), id = randomUUID(), now = new Date().toISOString();
     const signal=validateSignal(req.body);
     await db.batch([['INSERT INTO tasks(id,user_id,title,description,course_id,due_at,status,visibility,effort,importance,reminder,created_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',id,req.user.id,...Object.values(t),now,t.status==='done'?now:null],['INSERT INTO task_signals VALUES(?,?,?)',id,signal.difficulty,signal.progress]]);
-    res.status(201).json((await taskOut((await owned(req, id)))));
+    void autoCalendar(req.user.id).catch(()=>console.warn('Calendar update pending'));res.status(201).json((await taskOut((await owned(req, id)))));
 });
 app.patch('/api/tasks/:id', auth, async (req, res) => {
     const old = (await owned(req, req.params.id)), t = validateTask({ ...old, ...req.body }, accessibleCourses(req.user));
@@ -158,9 +183,9 @@ app.patch('/api/tasks/:id', auth, async (req, res) => {
     await db.batch([['UPDATE tasks SET title=?,description=?,course_id=?,due_at=?,status=?,visibility=?,effort=?,importance=?,reminder=?,completed_at=? WHERE id=? AND user_id=?',...Object.values(t),t.status==='done'?(old.completed_at||new Date().toISOString()):null,old.id,req.user.id],['INSERT INTO task_signals VALUES(?,?,?) ON CONFLICT(task_id) DO UPDATE SET difficulty=excluded.difficulty,progress=excluded.progress',old.id,signal.difficulty,signal.progress]]);
     if (t.status === 'done' || t.due_at !== old.due_at || t.reminder !== old.reminder)
         (await run('DELETE FROM notifications WHERE task_id=?', old.id));
-    res.json((await taskOut((await owned(req, old.id)))));
+    void autoCalendar(req.user.id).catch(()=>console.warn('Calendar update pending'));res.json((await taskOut((await owned(req, old.id)))));
 });
-app.delete('/api/tasks/:id', auth, async (req, res) => {
+app.delete('/api/tasks/:id', auth, async (req, res) => {await enqueueCalendar(req.user.id,async()=>{
     const t = (await owned(req, req.params.id)), event = (await one('SELECT * FROM calendar_events WHERE task_id=?', t.id)), conn = (await one('SELECT * FROM calendar_connections WHERE user_id=?', req.user.id));
     if (event && conn?.calendar_id) {
         const client = await calendarClient(req.user.id);
@@ -169,7 +194,7 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
     }
     (await run('DELETE FROM tasks WHERE id=? AND user_id=?', t.id, req.user.id));
     res.json({ ok: true });
-});
+});});
 app.get('/api/community', async (req, res) => {
     const q = String(req.query.q || '').slice(0, 120).replace(/[\\%_]/g, '\\$&'), course = String(req.query.course || ''), career = String(req.query.career || '');
     let rows = (await all("SELECT t.*,u.name author FROM tasks t JOIN users u ON u.id=t.user_id WHERE t.visibility='public' AND (t.title LIKE ? ESCAPE '\\' OR t.description LIKE ? ESCAPE '\\') AND (?='' OR t.course_id=?) AND (?='' OR substr(t.course_id,1,instr(t.course_id,':')-1)=?) ORDER BY t.created_at DESC LIMIT 200", '%' + q + '%', '%' + q + '%', course, course, career, career));
@@ -287,48 +312,52 @@ async function calendarClient(uid) { const conn = (await one('SELECT * FROM cale
 } const client = oauth(), tokens = decrypt(conn.tokens); client.setCredentials(tokens); client.on('tokens', async (fresh) => { const latest = (await one('SELECT tokens FROM calendar_connections WHERE user_id=?', uid)); if (latest)
     (await run('UPDATE calendar_connections SET tokens=? WHERE user_id=?', encrypt({ ...decrypt(latest.tokens), ...fresh }), uid)); }); return client; }
 const syncing = new Set();
-app.post('/api/calendar/sync', auth, async (req, res) => {
-    if (syncing.has(req.user.id))
-        return res.status(409).json({ error: 'Ya hay una sincronización en curso.' });
-    syncing.add(req.user.id);
+async function syncUserCalendar(uid) {
+    if (syncing.has(uid))
+        throw Error('Ya hay una sincronización en curso.');
+    syncing.add(uid);
     try {
-        const client = await calendarClient(req.user.id);
-        let conn = (await one('SELECT * FROM calendar_connections WHERE user_id=?', req.user.id));
+        const client = await calendarClient(uid);
+        let conn = (await one('SELECT * FROM calendar_connections WHERE user_id=?', uid));
         if (!conn.calendar_id) {
             const { data } = await client.request({ url: 'https://www.googleapis.com/calendar/v3/calendars', method: 'POST', data: { summary: 'Desbloquéate · Mis entregas', timeZone: 'America/Lima' } });
-            (await run('UPDATE calendar_connections SET calendar_id=? WHERE user_id=?', data.id, req.user.id));
+            (await run('UPDATE calendar_connections SET calendar_id=? WHERE user_id=?', data.id, uid));
             conn = { ...conn, calendar_id: data.id };
         }
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(conn.calendar_id)}/events`;
         let count = 0;
-        for (const t of (await all('SELECT * FROM tasks WHERE user_id=?', req.user.id))) {
+        for (const t of (await all('SELECT * FROM tasks WHERE user_id=?', uid))) {
             const saved = (await one('SELECT * FROM calendar_events WHERE task_id=?', t.id)), eid = saved?.event_id || t.id.replaceAll('-', '');
-            if (t.status === 'done') {
-                if (saved) {
-                    await client.request({ url: url + '/' + eid, method: 'DELETE' }).catch(e => { if (![404, 410].includes(e.response?.status))
-                        throw e; });
-                    (await run('DELETE FROM calendar_events WHERE task_id=?', t.id));
-                }
-                continue;
-            }
-            const event = { summary: t.title, description: (courses.get(t.course_id)?.name || '') + '\n' + t.description, start: { dateTime: t.due_at, timeZone: 'America/Lima' }, end: { dateTime: new Date(Date.parse(t.due_at) + 1800000).toISOString(), timeZone: 'America/Lima' }, visibility: 'private', reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: t.reminder }] } }, body = { ...event, id: eid };
+            const event = { summary: (t.status==='done'?'✓ Completada · ':'')+t.title, description: (courses.get(t.course_id)?.name || '') + '\n' + t.description, start: { dateTime: t.due_at, timeZone: 'America/Lima' }, end: { dateTime: new Date(Date.parse(t.due_at) + 1800000).toISOString(), timeZone: 'America/Lima' }, visibility: 'private', reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: t.reminder }] } }, body = { ...event, id: eid };
             try {
                 await client.request({ url: url + '/' + eid, method: 'PUT', data: event });
             }
             catch (e) {
                 if (![404, 410].includes(e.response?.status))
                     throw e;
-                await client.request({ url, method: 'POST', data: body });
+                await client.request({ url, method: 'POST', data: body }).catch(async conflict=>{if(conflict.response?.status!==409)throw conflict;await client.request({url:url+'/'+eid,method:'PUT',data:event});});
             }
             (await run('INSERT INTO calendar_events VALUES(?,?) ON CONFLICT(task_id) DO UPDATE SET event_id=excluded.event_id', t.id, eid));
             count++;
         }
-        res.json({ count });
+        return {count};
     }
     finally {
-        syncing.delete(req.user.id);
+        syncing.delete(uid);
     }
-});
+}
+const calendarQueues=new Map();
+function autoCalendar(uid,force=false){return enqueueCalendar(uid,()=>runAutoCalendar(uid,force));}
+function enqueueCalendar(uid,operation){const previous=calendarQueues.get(uid)||Promise.resolve();const job=previous.catch(()=>{}).then(operation);calendarQueues.set(uid,job);void job.finally(()=>{if(calendarQueues.get(uid)===job)calendarQueues.delete(uid);}).catch(()=>{});return job;}
+async function runAutoCalendar(uid,force=false){
+ const settings=await one('SELECT * FROM calendar_sync_settings WHERE user_id=?',uid);if(!force&&!settings?.enabled)return;
+ await run("UPDATE calendar_sync_settings SET state='pending',error='' WHERE user_id=?",uid);
+ try{const result=await syncUserCalendar(uid);await run("UPDATE calendar_sync_settings SET state='synced',error='',last_sync=?,attempts=0,next_try=NULL WHERE user_id=?",new Date().toISOString(),uid);return result;}
+ catch{const attempts=(settings?.attempts||0)+1;await run("UPDATE calendar_sync_settings SET state='error',error=?,attempts=?,next_try=? WHERE user_id=?",'Google no confirmó los cambios. Revisa permisos o reintenta.',attempts,new Date(Date.now()+Math.min(1800000,30000*2**Math.min(attempts,6))).toISOString(),uid);if(force)throw Error('Google no confirmó los cambios. Puedes reintentar.');}
+}
+app.get('/api/calendar/settings',auth,async(req,res)=>res.json(await one('SELECT enabled,state,error,last_sync FROM calendar_sync_settings WHERE user_id=?',req.user.id)||{enabled:0,state:'idle',error:''}));
+app.put('/api/calendar/settings',auth,async(req,res)=>{const enabled=req.body.enabled===true;if(enabled&&!await one('SELECT user_id FROM calendar_connections WHERE user_id=?',req.user.id))throw Error('Conecta Google Calendar primero.');await run('INSERT INTO calendar_sync_settings(user_id,enabled) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled',req.user.id,enabled?1:0);if(enabled)await autoCalendar(req.user.id);res.json(await one('SELECT enabled,state,error,last_sync FROM calendar_sync_settings WHERE user_id=?',req.user.id));});
+app.post('/api/calendar/sync',auth,async(req,res)=>{await run('INSERT OR IGNORE INTO calendar_sync_settings(user_id) VALUES(?)',req.user.id);res.json(await autoCalendar(req.user.id,true));});
 app.get('/api/calendar/events', auth, async (req, res) => {
     const conn = (await one('SELECT * FROM calendar_connections WHERE user_id=?', req.user.id));
     if (!conn?.calendar_id)
@@ -341,10 +370,14 @@ app.post('/api/calendar/disconnect', auth, async (req, res) => { const conn = (a
     let revoked=true;
     if(tokens.refresh_token)try{await oauth().revokeToken(tokens.refresh_token);}catch{revoked=false;}
     res.locals.revoked=revoked;
+    await run("UPDATE calendar_sync_settings SET enabled=0,state='idle',error='' WHERE user_id=?",req.user.id);
     (await run('DELETE FROM calendar_connections WHERE user_id=?', req.user.id));
     (await run('DELETE FROM calendar_events WHERE task_id IN (SELECT id FROM tasks WHERE user_id=?)', req.user.id));
 } res.json({ok:true,revoked:res.locals.revoked!==false}); });
 registerPlanning(app,{db,auth,calendarClient,taskOut,courses});
+registerCommunity(app,{db,auth,upload,courses,catalog});
+registerAcademic(app,{db,auth,courses});
+await registerPush(app,{db,auth,encrypt,decrypt,base:BASE});
 app.use('/api', (_, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
 const dist = root + '/dist/desbloqueate/browser';
 app.use(express.static(dist, { index: false }));
@@ -356,6 +389,7 @@ app.use((error, req, res, next) => { if (res.headersSent)
     return next(error); const status = error.status || ((error.code === 'LIMIT_FILE_SIZE') ? 413 : 400); if (error.code === 'LIMIT_FILE_SIZE')
     return res.status(413).json({ error: 'El archivo supera 10 MB.' }); if (error.response)
     console.error('External API error', error.response.status); res.status(status).json({ error: error.response ? 'No se pudo completar la conexión con Google. Revisa permisos y vuelve a intentar.' : (error.code||error.name==='SyntaxError')?'No se pudo procesar la solicitud. Revisa los datos e intenta otra vez.':error.message || 'No se pudo completar la operación.' }); });
+const retryTimer=setInterval(async()=>{try{for(const r of await all("SELECT user_id FROM calendar_sync_settings WHERE enabled=1 AND state='error' AND next_try<=? LIMIT 5",new Date().toISOString()))await autoCalendar(r.user_id);}catch{console.warn('Calendar retries unavailable');}},30000);retryTimer.unref();
 const timer = setInterval(() => remind().catch(e => console.error('Reminder scan failed:', e.message)), 30000);
 timer.unref();
 const server = app.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`Desbloquéate: ${BASE}`));

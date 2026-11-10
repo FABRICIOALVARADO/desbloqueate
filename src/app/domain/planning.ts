@@ -1,4 +1,4 @@
-export interface PlanningTask { id:string; due_at:string; status:string; importance:number; effort:number; difficulty?:number; progress?:number }
+export interface PlanningTask { id:string; due_at:string; status:string; importance:number; effort:number; difficulty?:number; progress?:number; academicRisk?:number; contentTopics?:number }
 export interface Interval {start:string;end:string}
 export interface StudyBlock extends Interval {task_id:string}
 export function rankTask(t:PlanningTask, now:number, available=60){
@@ -7,10 +7,10 @@ export function rankTask(t:PlanningTask, now:number, available=60){
   const progress=Math.max(0,Math.min(100,t.progress??(t.status==='working'?25:0)));
   const remaining=Math.max(5,Math.ceil(t.effort*(1-progress/100)));
   const difficulty=t.difficulty??2;
-  const urgency=Number.isFinite(hours)?hours<=0?10000:Math.max(0,168-hours)*10:0;
-  const score=Math.round(urgency+t.importance*30+difficulty*15+Math.min(remaining,480)/8+(remaining<=available?35:0)+(progress>0?20:0));
+  const urgency=Number.isFinite(hours)?hours<=0?10000:hours<24?750:hours<72?500:hours<168?200:50:0;
+  const score=Math.round(urgency+t.importance*60+difficulty*80+Math.min(remaining,480)/2+Math.max(0,Math.min(100,t.academicRisk??0))*5+Math.min(10,t.contentTopics??0)*12+(remaining<=available?35:0)+(progress>0?20:0));
   const reasons=[!Number.isFinite(hours)?'Fecha pendiente de revisar':hours<=0?'Entrega vencida':hours<24?'Vence en menos de un día':hours<72?'Vence en los próximos tres días':'Fecha registrada',`Importancia ${t.importance}/3`, `Dificultad ${difficulty}/3`,`${remaining} min estimados pendientes`,remaining<=available?'Cabe en tu disponibilidad':'Conviene dividirla en bloques'];
-  return {score,reasons,remaining};
+  if(t.academicRisk)reasons.push('El curso requiere atención según tus notas y tu meta');if(t.contentTopics)reasons.push(t.contentTopics+' temas identificados en tu material autorizado');return {score,reasons,remaining};
 }
 export function rankedTasks<T extends PlanningTask>(tasks:T[],now:number,available=60){return tasks.filter(t=>t.status!=='done').map(t=>({...t,...rankTask(t,now,available)})).sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));}
 export function overlaps(a:Interval,b:Interval){return Date.parse(a.start)<Date.parse(b.end)&&Date.parse(b.start)<Date.parse(a.end);}

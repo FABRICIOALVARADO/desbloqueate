@@ -69,6 +69,8 @@ test('accounts, ownership, uploads, reminders and durable storage',async()=>{
  assert.equal((await request('/study/propose',{method:'POST',body:window})).status,401);
  assert.equal((await request('/study/propose',{method:'POST',cookie:a.cookie,body:{...window,useAI:true}})).status,403);
  assert.equal((await request('/study/propose',{method:'POST',cookie:a.cookie,body:{...window,useCalendar:true}})).status,403);
+ const consentStatus=(await request('/ai/consent',{cookie:a.cookie})).data;
+ assert.equal((await request('/ai/consent',{method:'PUT',cookie:a.cookie,body:{version:consentStatus.version,accepted:true}})).status,200);
  assert.equal((await request('/study/propose',{method:'POST',cookie:a.cookie,body:{...window,useAI:true,consent:true}})).status,503);
  const before=(await request('/tasks',{cookie:a.cookie})).data;
  const proposed=await request('/study/propose',{method:'POST',cookie:a.cookie,body:window});assert.equal(proposed.status,200,JSON.stringify(proposed));assert.ok(proposed.data.blocks.length);

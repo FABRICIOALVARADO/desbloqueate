@@ -1,0 +1,43 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {spawn} from 'node:child_process';import {mkdtemp,readFile,mkdir,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {resolve} from 'node:path';import {randomUUID,createHash} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';import {validateLearningResult} from '../server/academic-routes.mjs';
+test('learning rejects unsupported answers and fabricated text evidence',()=>{const r={summary:'Resumen',topics:['Tema'],questions:[{prompt:'Pregunta',options:['A','B'],answer:0,explanation:'Porque A',evidence:'texto real',reference:'Sección 1'}]};assert.equal(validateLearningResult(r,1,'Un texto real de prueba').questions.length,1);assert.throws(()=>validateLearningResult(r,1,'Otro contenido'));assert.throws(()=>validateLearningResult(r,5,'texto real'));});
+test('public posts, privacy, replies, consent, targets and 60 concurrent accounts',async()=>{
+ const dir=await mkdtemp(resolve(tmpdir(),'v03-integration-')),port=35000+Math.floor(Math.random()*1000),base=`http://localhost:${port}`,cookies=[];
+ const db=new DatabaseSync(dir+'/desbloqueate.sqlite');for(const f of ['schema.sql','schema-v024.sql','schema-v03.sql'])db.exec(await readFile('server/'+f,'utf8'));for(let i=0;i<60;i++){const id='test-'+i,token=randomUUID();db.prepare('INSERT INTO users(id,email,name,created_at) VALUES(?,?,?,?)').run(id,`test${i}@gmail.com`,'Estudiante de prueba '+i,new Date().toISOString());db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(token).digest('hex'),id,Date.now()+3600000);cookies.push('db_session='+token);}db.close();
+ const child=spawn(process.execPath,['server/index.mjs'],{env:{...process.env,PORT:String(port),APP_URL:base,DATA_DIR:dir,DATABASE_URL:'',AI_ENABLED:'false',GOOGLE_CLIENT_ID:'',GOOGLE_CLIENT_SECRET:''},stdio:['ignore','pipe','pipe']});let logs='';child.stderr.on('data',d=>logs+=d);
+ const request=async(path,user=0,method='GET',body)=>{const r=await fetch(base+'/api'+path,{method,headers:{'X-Requested-With':'Desbloqueate',...(user===null?{}:{Cookie:cookies[user]}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()};};
+ try{
+  let ready=false;for(let i=0;i<100;i++){try{if((await request('/health')).status===200){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(ready,logs);
+  const catalog=(await request('/catalog')).data,career=catalog.careers[0].id,course=catalog.careers[0].cycles[0].courses[0].id;
+  assert.equal((await request('/social/posts',null)).status,401);
+  const input={title:'Consulta académica',body:'¿Cómo organizar este tema?',career_id:career,course_id:course,tags:'repaso',confirmPublic:true};
+  assert.equal((await request('/social/posts',0,'POST',{...input,confirmPublic:false})).status,400);
+  const post=(await request('/social/posts',0,'POST',input)).data;assert.ok(post.id);
+  assert.equal((await request('/social/posts/'+post.id,1,'PATCH',input)).status,404);
+  assert.equal((await request('/social/posts/'+post.id+'/marks',0,'PUT',{kind:'useful'})).status,400);
+  await request('/social/posts/'+post.id+'/marks',1,'PUT',{kind:'useful'});await request('/social/posts/'+post.id+'/marks',1,'PUT',{kind:'useful'});assert.equal((await request('/social/posts/'+post.id)).data.useful,1);
+  const c=(await request('/social/posts/'+post.id+'/comments',1,'POST',{body:'Podemos comenzar por el primer concepto.'})).data;assert.ok(c.id);
+  await request('/social/comments/'+c.id+'/useful',0,'PUT',{});await request('/social/comments/'+c.id+'/useful',0,'PUT',{});assert.equal((await request('/social/posts/'+post.id+'/comments')).data[0].useful,1);
+  assert.equal((await request('/social/comments/'+c.id+'/useful',1,'PUT',{})).status,400);
+  const task=(await request('/tasks',0,'POST',{title:'Tarea privada',description:'No publicar',course_id:course,due_at:new Date(Date.now()+86400000).toISOString()})).data;
+  const attachment=new FormData();attachment.append('file',new Blob(['Material de prueba privado'],{type:'text/plain'}),'apuntes.txt');const f=(await request('/tasks/'+task.id+'/files',0,'POST',attachment)).data;
+  const otherPost=(await request('/social/posts',1,'POST',input)).data;assert.equal((await request('/social/posts/'+otherPost.id+'/task-files',1,'POST',{ids:[f.id],confirmPublic:true})).status,404);
+  assert.equal((await request('/social/posts/'+post.id+'/task-files',0,'POST',{ids:[f.id],confirmPublic:true})).status,200);assert.equal((await request('/tasks')).data.find(t=>t.id===task.id).visibility,'private');
+  const fake=new FormData();fake.append('file',new Blob(['Not an image']), 'fake.png');assert.equal((await request('/social/posts/'+post.id+'/files',0,'POST',fake)).status,400);
+  await request('/social/posts/'+post.id+'/report',1,'POST',{reason:'Reporte de prueba'});assert.equal((await request('/social/moderation',1)).status,403);
+  await request('/social/blocks/test-0',1,'PUT',{active:true});assert.equal((await request('/social/posts/'+post.id,1)).status,404);await request('/social/blocks/test-0',1,'PUT',{active:false});
+  const profile=(await request('/social/profiles/test-0',1)).data;assert.equal(profile.email,undefined);assert.equal(profile.preferences,undefined);
+  assert.equal((await request('/grade-targets/'+encodeURIComponent(course),0,'PUT',{target:15})).status,200);assert.equal((await request('/grade-targets',1)).data.length,0);
+  const consent=(await request('/ai/consent')).data;assert.equal(consent.accepted,false);await request('/ai/consent',0,'PUT',{accepted:true,version:consent.version});assert.equal((await request('/ai/consent')).data.accepted,true);await request('/ai/consent',0,'PUT',{accepted:false,version:consent.version});assert.equal((await request('/learning/'+f.id,0,'POST',{count:5,authorizeFile:true})).status,403);
+  const personal=(await request('/personal-courses',0,'POST',{name:'Fotografía y composición',kind:'elective',cycle:3}));assert.equal(personal.status,201);const personalId=personal.data.course.id;
+  assert.equal((await request('/catalog',1)).data.careers.some(p=>p.id===personal.data.plan.id),false);
+  assert.equal((await request('/enrollments',1,'PUT',{courseIds:[personalId]})).status,400);
+  const settings={name:'Fotografía aplicada',sessions:[{day:2,start:'08:00',end:'10:00'}]};
+  assert.equal((await request('/course-settings/'+encodeURIComponent(personalId),1,'PUT',settings)).status,400);
+  assert.equal((await request('/course-settings/'+encodeURIComponent(personalId),0,'PUT',settings)).status,200);
+  assert.equal((await request('/course-settings/'+encodeURIComponent(personalId),0,'PUT',{...settings,sessions:[{day:2,start:'12:00',end:'10:00'}]})).status,400);
+  assert.equal((await request('/session')).data.user.preferences.courseSettings[personalId].sessions[0].start,'08:00');
+  assert.equal((await request('/session',1)).data.user.preferences.courseSettings,undefined);
+  const samples=[],start=performance.now();await Promise.all(cookies.map(async(_,u)=>{for(const path of ['/session','/tasks','/grades','/social/posts','/social/notices']){const t=performance.now();const r=await request(path,u);assert.equal(r.status,200);samples.push(performance.now()-t);}}));samples.sort((a,b)=>a-b);const metrics={environment:'Local Node + SQLite; synthetic authenticated accounts, not production Supabase',concurrentUsers:60,requests:samples.length,errors:0,totalMs:Math.round(performance.now()-start),p50Ms:Math.round(samples[Math.floor(samples.length*.5)]),p95Ms:Math.round(samples[Math.floor(samples.length*.95)]),maxMs:Math.round(samples.at(-1))};await mkdir('test-results',{recursive:true});await writeFile('test-results/v03-load.json',JSON.stringify(metrics,null,2));console.log('Local concurrency:',JSON.stringify(metrics));
+  assert.equal((await request('/social/posts/'+post.id,1,'DELETE')).status,404);assert.equal((await request('/social/posts/'+post.id,0,'DELETE')).status,200);
+ }finally{child.kill();await new Promise(r=>child.once('exit',r));}
+});

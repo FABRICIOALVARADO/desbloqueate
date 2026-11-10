@@ -1,6 +1,6 @@
 {
   "name": "desbloqueate",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Desbloquéate UC: organización universitaria con control del estudiante",
   "author": "Fabricio Alvarado Mauricio",
   "private": true,
@@ -25,12 +25,15 @@
     "dayjs": "^1.11.10",
     "express": "^5.1.0",
     "google-auth-library": "^10.3.0",
+    "lottie-web": "5.13.0",
+    "mammoth": "1.11.0",
     "multer": "^2.0.2",
     "pg": "8.16.3",
     "rxjs": "~7.8.0",
     "sweetalert2": "^11.10.8",
     "three": "^0.180.0",
     "tslib": "^2.6.2",
+    "web-push": "3.6.7",
     "zone.js": "~0.15.1"
   },
   "devDependencies": {

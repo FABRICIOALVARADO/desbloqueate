@@ -1,3 +1,4 @@
+import {bootProgress,bootError} from './app/utils/boot-loader';
 /**
  * Punto de entrada. Angular 17 usa "standalone components": no hay NgModule,
  * se arranca directamente el componente raíz con bootstrapApplication().
@@ -10,4 +11,5 @@ import { AppComponent } from './app/app.component';
 
 dayjs.locale('es');
 
-bootstrapApplication(AppComponent).catch((err) => console.error(err));
+bootProgress(15,'Iniciando tu espacio…');
+bootstrapApplication(AppComponent).catch((err) => {bootError();console.error(err);});

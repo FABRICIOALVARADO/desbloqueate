@@ -1,3 +1,4 @@
+import {CONSENT_VERSION} from './academic-routes.mjs';
 import {randomUUID} from 'node:crypto';
 import {rankedTasks,buildPlan,validateWindow,overlaps} from '../src/app/domain/planning.ts';
 import {aiConfig,generateAdvice} from './ai-provider.mjs';
@@ -10,7 +11,7 @@ export function registerPlanning(app,{db,auth,calendarClient,taskOut,courses}){
   const r=requests.get(req.user.id)||{n:0,until:now+60000};r.n++;requests.set(req.user.id,r);
   if(r.n>30)return res.status(429).json({error:'Demasiadas solicitudes. Espera un minuto y vuelve a intentar.'});next();
  });
- const tasksFor=async uid=>Promise.all((await all('SELECT * FROM tasks WHERE user_id=?',uid)).map(taskOut));
+ const tasksFor=async uid=>{const rows=await all('SELECT * FROM tasks WHERE user_id=?',uid),grades=await all('SELECT g.course_id,g.components,t.target FROM grades g LEFT JOIN grade_targets t ON t.user_id=g.user_id AND t.course_id=g.course_id WHERE g.user_id=?',uid);return Promise.all(rows.map(async t=>{const task=await taskOut(t),g=grades.find(g=>g.course_id===t.course_id);if(g){const known=JSON.parse(g.components).filter(r=>r.grade!==null),weight=known.reduce((n,r)=>n+r.weight,0),earned=known.reduce((n,r)=>n+r.grade*r.weight/100,0);task.academicRisk=weight?Math.max(0,(g.target??10.5)-earned/(weight/100))*10:0;}const result=await one('SELECT r.result FROM document_results r JOIN attachments a ON a.id=r.file_id WHERE a.task_id=? AND r.user_id=? ORDER BY r.created_at DESC LIMIT 1',t.id,uid);task.contentTopics=result?JSON.parse(result.result).topics.length:0;return task;}));};
  const blocksFor=async uid=>(await all('SELECT * FROM study_blocks WHERE user_id=? ORDER BY start_at',uid)).map(b=>({...b,start:b.start_at,end:b.end_at}));
  app.get('/api/ai/status',auth,(_req,res)=>{const {enabled,provider,privacy}=aiConfig();res.json({enabled,provider,privacy});});
  app.get('/api/study/blocks',auth,async(req,res)=>res.json(await blocksFor(req.user.id)));
@@ -18,7 +19,8 @@ export function registerPlanning(app,{db,auth,calendarClient,taskOut,courses}){
   const {start,end,useAI=false,consent=false,useCalendar=false,calendarConsent=false,action='organize',request=''}=req.body;
   if(!['recommend','start','organize','reorganize'].includes(action)||typeof request!=='string'||request.length>500)throw Error('Solicitud de organización inválida.');
   const window=validateWindow(start,end),now=Date.now();
-  if(useAI&&consent!==true)return res.status(403).json({error:'Autoriza el uso de contexto académico antes de enviarlo a la IA.'});
+  const storedConsent=useAI?await one('SELECT * FROM ai_consents WHERE user_id=?',req.user.id):null;
+  if(useAI&&(consent!==true||storedConsent?.version!==CONSENT_VERSION||storedConsent?.revoked_at))return res.status(403).json({error:'Autoriza el uso de contexto académico antes de enviarlo a la IA.'});
   if(useCalendar&&calendarConsent!==true)return res.status(403).json({error:'Autoriza el uso de tu disponibilidad de Google.'});
   const tasks=await tasksFor(req.user.id),existing=await blocksFor(req.user.id);
   // Reorganization proposes a replacement only for unsynchronized future blocks in this window.
@@ -40,7 +42,7 @@ export function registerPlanning(app,{db,auth,calendarClient,taskOut,courses}){
    await run('DELETE FROM ai_usage WHERE bucket<?',day);
    // Minimize data: opaque aliases, no identities, descriptions, grades, dates, or calendar events.
    const chosen=ranked.slice(0,10),context={action,request,tasks:chosen.map((t,i)=>({id:'t'+i,title:t.title,course:courses.get(t.course_id)?.name||'',difficulty:t.difficulty,remaining:t.remaining,reasons:t.reasons}))};
-   const advice=await generateAdvice(context);
+   const latest=await one('SELECT * FROM ai_consents WHERE user_id=?',req.user.id);if(latest?.revoked_at||latest?.version!==CONSENT_VERSION)throw Error('Consentimiento retirado.');const advice=await generateAdvice(context);
    result.steps=advice.map(s=>({...s,task_id:chosen[Number(s.task_id.slice(1))].id}));result.source='ai';result.notice='Acciones seleccionadas por IA; prioridades y horarios calculados y validados localmente. Revisa antes de aceptar.';
   }catch(error){console.warn('AI request failed',String(error?.name||'Error'),String(error?.code||error?.cause?.code||'unknown'));result.notice='La IA no pudo responder de forma válida. Se conserva la propuesta local, sin aplicar cambios.';}
   finally{aiLocks.delete(req.user.id);}
