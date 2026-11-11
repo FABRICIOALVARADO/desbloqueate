@@ -41,3 +41,5 @@ test('public posts, privacy, replies, consent, targets and 60 concurrent account
   assert.equal((await request('/social/posts/'+post.id,1,'DELETE')).status,404);assert.equal((await request('/social/posts/'+post.id,0,'DELETE')).status,200);
  }finally{child.kill();await new Promise(r=>child.once('exit',r));}
 });
+
+test('document analysis accepts a summary without quiz questions',()=>{const r=validateLearningResult({summary:'Resumen del documento',topics:['Tema'],title:'Plan de estudio',steps:['Leer las instrucciones']},0);assert.deepEqual(r.questions,[]);assert.equal(r.title,'Plan de estudio');assert.throws(()=>validateLearningResult({summary:'Resumen',topics:[]},5));});

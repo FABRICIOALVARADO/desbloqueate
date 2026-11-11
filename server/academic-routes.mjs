@@ -2,6 +2,8 @@ import {randomUUID} from 'node:crypto';import {Worker} from 'node:worker_threads
 import {aiConfig} from './ai-provider.mjs';import {validateCommunityFile} from './community-routes.mjs';
 export const CONSENT_VERSION='academic-v03-gemini-1';
 export function validateLearningResult(r,count,text=''){
+ // An upload analysis is not a quiz; discard unsolicited questions from the provider.
+ if(count===0&&r&&typeof r==='object')r={...r,questions:[]};
  if(typeof r?.summary!=='string'||r.summary.length>8000||!Array.isArray(r.topics)||r.topics.length>20||r.topics.some(x=>typeof x!=='string'||x.length>500))throw Error('Análisis inválido.');
  if(!Array.isArray(r.questions)||r.questions.length!==count)throw Error('El material no produjo suficientes preguntas verificables. Prueba con menos preguntas.');
  for(const q of r.questions){if(typeof q.prompt!=='string'||q.prompt.length>1200||!Array.isArray(q.options)||q.options.length<2||q.options.length>4||q.options.some(x=>typeof x!=='string'||x.length>800)||!Number.isInteger(q.answer)||q.answer<0||q.answer>=q.options.length||typeof q.explanation!=='string'||typeof q.evidence!=='string'||!q.evidence.trim()||q.evidence.length>600||typeof q.reference!=='string')throw Error('Pregunta sin fundamento válido.');if(text&&!text.toLowerCase().replace(/\s+/g,' ').includes(q.evidence.toLowerCase().replace(/\s+/g,' ')))throw Error('La IA citó contenido que no está en el documento.');}
