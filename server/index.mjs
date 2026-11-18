@@ -48,7 +48,7 @@ const googleReady = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_C
 function oauth() { return new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, BASE + '/api/auth/google/callback'); }
 const app = express();
 app.disable('x-powered-by');
-app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'" }); if (PROD)
+app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'" }); if (PROD)
     res.set('Strict-Transport-Security', 'max-age=31536000'); if (req.path.startsWith('/api/'))
     res.set('Cache-Control', 'no-store'); next(); });
 app.use(express.json({ limit: '256kb' }));
@@ -394,5 +394,3 @@ const timer = setInterval(() => remind().catch(e => console.error('Reminder scan
 timer.unref();
 const server = app.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`Desbloquéate: ${BASE}`));
 process.on('SIGTERM', () => server.close(async () => { await db.close(); process.exit(0); }));
-
-
