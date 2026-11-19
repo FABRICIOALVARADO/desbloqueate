@@ -168,6 +168,7 @@ app.patch('/api/profile', auth, async (req, res) => {
     (await run('UPDATE users SET name=?,preferences=? WHERE id=?', name.trim(), JSON.stringify({...JSON.parse(req.user.preferences||'{}'),...clean}), req.user.id));
     res.json((await publicUser((await one('SELECT * FROM users WHERE id=?', req.user.id)))));
 });
+app.put('/api/tutorial',auth,async(req,res)=>{await run('UPDATE users SET preferences=? WHERE id=?',JSON.stringify({...JSON.parse(req.user.preferences||'{}'),tutorialCompleted:true}),req.user.id);res.json({ok:true});});
 app.get('/api/tasks', auth, async (req, res) => res.json(await Promise.all((await all('SELECT * FROM tasks WHERE user_id=? ORDER BY due_at', req.user.id)).map(taskOut))));
 app.post('/api/tasks', auth, async (req, res) => {
     if ((await one('SELECT count(*) n FROM tasks WHERE user_id=?', req.user.id)).n >= 1000)

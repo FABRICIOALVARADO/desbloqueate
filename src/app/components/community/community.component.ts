@@ -6,6 +6,7 @@ import {ApiService} from '../../services/api.service';import {Career,Course,User
 export class CommunityComponent implements OnInit,OnChanges{
  @Input() user:User|null=null;@Input() careers:Career[]=[];@Input() courses:Course[]=[];@Input() career='';@Input() sharedTask:Task|null=null;@Output() login=new EventEmitter<void>();
  posts:any[]=[];comments:any[]=[];notices:any[]=[];blocks:any[]=[];active:any=null;profile:any=null;more=false;loading=false;error='';message='';query='';filter='';course='';offset=0;composer=false;preview=false;saving=false;editId='';reply='';parent:string|null=null;files:File[]=[];selectedFiles:string[]=[];confirmPublic=false;
+ postKind:'question'|'material'='question';
  draft={title:'',body:'',career_id:'',course_id:'',tags:''};
  filePreviews:{file:File;url:string}[]=[];private loadVersion=0;
  attachment:any=null;previewUrl:SafeResourceUrl|null=null;
@@ -19,7 +20,7 @@ export class CommunityComponent implements OnInit,OnChanges{
  get careerCourses(){return this.courses.filter(c=>!this.draft.career_id||c.careerId===this.draft.career_id);}
  @HostListener('window:scroll') onFeedScroll(){if(this.more&&!this.loading&&!this.error&&!this.active&&!this.composer&&window.innerHeight+window.scrollY>=document.documentElement.scrollHeight-600)void this.load(true);}
  async load(append=false){if(!this.user||(append&&this.loading))return;const version=++this.loadVersion;this.loading=true;this.error='';const next=append?this.offset+20:0;try{const r=await this.api.request<any>('/social/posts?'+new URLSearchParams({career:this.career,q:this.query,course:this.course,filter:this.filter,offset:String(next)}));if(version!==this.loadVersion)return;this.posts=append?[...this.posts,...r.items.filter((p:any)=>!this.posts.some(old=>old.id===p.id))]:r.items;this.offset=next;this.more=r.more;}catch(e){this.error=String((e as Error).message);}finally{if(version===this.loadVersion)this.loading=false;}}
- newPost(){if(!this.user){this.login.emit();return;}this.clearPreviews();this.composer=true;this.editId='';this.confirmPublic=false;this.files=[];this.selectedFiles=[];this.draft={title:'',body:'',career_id:this.career,course_id:'',tags:''};}
+ newPost(kind:'question'|'material'='question'){this.postKind=kind;if(!this.user){this.login.emit();return;}this.clearPreviews();this.composer=true;this.editId='';this.confirmPublic=false;this.files=[];this.selectedFiles=[];this.draft={title:'',body:'',career_id:this.career,course_id:'',tags:''};}
  edit(p:any){this.editId=p.id;this.draft={title:p.title,body:p.body,career_id:p.career_id,course_id:p.course_id,tags:p.tags};this.files=[];this.composer=true;this.confirmPublic=false;}
  clearPreviews(){for(const p of this.filePreviews)URL.revokeObjectURL(p.url);this.filePreviews=[];}
  removeDraftFile(file:File){this.files=this.files.filter(f=>f!==file);const p=this.filePreviews.find(p=>p.file===file);if(p)URL.revokeObjectURL(p.url);this.filePreviews=this.filePreviews.filter(p=>p.file!==file);}
